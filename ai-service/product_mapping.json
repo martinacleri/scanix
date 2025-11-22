@@ -1,0 +1,19 @@
+{
+  "sal_celusal_500g": {
+    "sku": "ALM-SAL-CEL-500",
+    "nombre": "Sal Celusal 500g",
+    "categoria": "Almacen"
+  },
+  "leche_serenisima_1l": {
+    "sku": "LAC-LEC-SER-1L",
+    "nombre": "Leche La Serenisima Protein 1L",
+    "categoria": "Lacteos"
+  },
+  "mayonesa_hellmanns_500ml": {
+    "sku": "MAY-001",
+    "nombre": "Mayonesa Hellmann's Suave 500ml",
+    "categoria": "Almacen",
+    "precio_base": 1200,
+    "samples": 27
+  }
+}

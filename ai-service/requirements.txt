@@ -1,0 +1,8 @@
+Flask
+Flask-Cors
+ultralytics
+sentence-transformers
+scikit-learn
+opencv-python-headless
+Pillow
+numpy
