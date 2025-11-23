@@ -1,6 +1,6 @@
 export interface PriceRule {
   from: number;
-  to: number;
+  to: number | null;
   price: number;
 }
 
@@ -18,10 +18,8 @@ export interface ProductUI {
 }
 
 export interface PriceRuleFromAPI {
-    id: number;
-    product_id: number;
-    min_quantity: number;
-    max_quantity: number | null;
+    from: number;
+    to: number | null;
     price: number;
 }
 
@@ -57,8 +55,8 @@ export const mapProductFromApiToUI = (apiProduct: ProductFromAPI): ProductUI => 
     category_name: apiProduct.category_name || 'Sin categoría',
     stock: Number(apiProduct.totalStock) || 0,
     priceRules: apiProduct.priceRules ? apiProduct.priceRules.map(rule => ({
-        from: rule.min_quantity,
-        to: rule.max_quantity || 0,
+        from: rule.from,
+        to: rule.to, 
         price: Number(rule.price)
     })) : []
   };

@@ -6,8 +6,6 @@ import fs from 'fs';
 import path from 'path';
 
 export const recognizeProduct = async (req: Request, res: Response) => {
-    console.log("!!! PETICIÓN RECIBIDA EN NODE.JS !!!");
-    console.log("Archivo recibido:", req.file);
     const imageFile = req.file;
 
     if (!imageFile) {

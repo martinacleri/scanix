@@ -145,14 +145,24 @@ const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     );
   };
 
-  const getCurrentPrice = (product: ProductUI, quantity: number): number => {
-    if (!product.priceRules || product.priceRules.length === 0) {
-      return product.price;
+const getCurrentPrice = (product: ProductUI, quantity: number): number => {
+  if (!product.priceRules || product.priceRules.length === 0) {
+    return product.price;
+  }
+
+  const sortedRules = [...product.priceRules].sort((a, b) => b.from - a.from);
+
+  for (const rule of sortedRules) {
+    const min = rule.from;
+    const max = rule.to !== null ? rule.to : Infinity;
+
+    if (quantity >= min && quantity <= max) {
+      return rule.price;
     }
-    const sortedRules = [...product.priceRules].sort((a, b) => b.from - a.from);
-    const applicableRule = sortedRules.find(rule => quantity >= rule.from);
-    return applicableRule ? applicableRule.price : product.price;
-  };
+  }
+
+  return product.price;
+};
 
   const getTotalAmount = () => {
     return cart.reduce((total, item) => {
@@ -341,50 +351,107 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
       )}
 
 {/* Current Order View */}
-    {!isScanning && cart.length > 0 && (
-      <Card>
-        <CardHeader>
-          <CardTitle>Pedido actual</CardTitle>
-          <CardDescription>{cart.length} productos en el pedido</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {cart.map((product) => (
-                <Card key={product.id} className="p-3">
-                  <div className="flex items-center gap-4">
-                    <img src={product.image_url} alt={product.name} className="w-12 h-12 object-cover rounded-md bg-muted"/>
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-sm truncate">{product.name}</h4>
-                      <p className="text-xs text-muted-foreground">${getCurrentPrice(product, product.quantity).toFixed(2)}</p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(product.id, -1)}>
-                        <Minus className="h-4 w-4" />
-                      </Button>
-                      <span className="w-8 text-center font-medium">{product.quantity}</span>
-                      <Button variant="outline" size="icon" className="h-7 w-7" onClick={() => updateQuantity(product.id, 1)}>
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => removeProduct(product.id)}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+{!isScanning && cart.length > 0 && (
+  <Card>
+    <CardHeader>
+      <CardTitle>Pedido actual</CardTitle>
+      <CardDescription>{cart.length} productos en el pedido</CardDescription>
+    </CardHeader>
+    <CardContent>
+      <div className="space-y-4">
+        {cart.map((product) => {
+          console.log('🚨 PRODUCTO COMPLETO:', JSON.stringify(product, null, 2));
+          const unitPrice = getCurrentPrice(product, product.quantity);
+          const subtotal = unitPrice * product.quantity;
+          const savings = (product.price - unitPrice) * product.quantity;
 
-              <div className="flex flex-col items-end pt-4 border-t">
-                <div className="font-bold text-lg mb-4">
-                  Total: ${getTotalAmount()}
+          return (
+            <Card key={product.id} className="overflow-hidden border-muted-foreground/20">
+              <div className="p-3 flex items-center gap-4">
+                <img 
+                  src={product.image_url} 
+                  alt={product.name} 
+                  className="w-12 h-12 object-cover rounded-md bg-muted"
+                />
+                
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-medium text-sm truncate">{product.name}</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Precio base: ${product.price.toFixed(2)}
+                  </p>
+                  {savings > 0 && (
+                    <p className="text-xs text-green-600 font-medium">
+                      ¡Ahorrás ${savings.toFixed(2)}!
+                    </p>
+                  )}
                 </div>
-                <Button size="lg" className="gap-2 w-full md:w-auto" onClick={handleGenerateOrder}>
-                  <ShoppingCart className="h-5 w-5" />
-                  Generar pedido
-                </Button>
+                
+                <div className="flex items-center gap-1">
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    className="h-7 w-7" 
+                    onClick={() => updateQuantity(product.id, -1)}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <span className="w-8 text-center font-medium">{product.quantity}</span>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    className="h-7 w-7" 
+                    onClick={() => updateQuantity(product.id, 1)}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 text-destructive" 
+                    onClick={() => removeProduct(product.id)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
+
+              <div className="bg-muted/50 px-3 py-2 flex justify-between items-center border-t text-sm">
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    Precio unitario aplicado:
+                  </p>
+                  <p className="text-sm font-bold text-foreground">
+                    ${unitPrice.toFixed(2)} c/u
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Subtotal:</p>
+                  <p className="text-lg font-bold text-foreground">
+                    ${subtotal.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+
+        <div className="flex flex-col items-end pt-4 border-t mt-4">
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-muted-foreground">Total:</span>
+            <span className="font-bold text-2xl">${getTotalAmount()}</span>
           </div>
-        </CardContent>
-      </Card>
+          <Button 
+            size="lg" 
+            className="gap-2 w-full md:w-auto" 
+            onClick={handleGenerateOrder}
+          >
+            <ShoppingCart className="h-5 w-5" />
+            Generar pedido
+          </Button>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
 )}
 
       {/* Camera Modal */}
