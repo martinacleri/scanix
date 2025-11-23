@@ -24,7 +24,7 @@ import html2canvas from 'html2canvas';
 interface TicketModalProps {
   isOpen: boolean;
   onClose: () => void;
-  products: CartItem[]; 
+  products: CartItem[];
 }
 
 interface FoundClient {
@@ -311,7 +311,11 @@ const handleDownloadPDF = () => {
 
   const handleClose = () => {
     resetState(); // Primero, reseteamos el estado interno
-    onClose();    // Luego, llamamos a la función del padre para cerrar el modal
+    if (confirmedSaleId) {
+    } else {
+        // SI NO hubo venta (es una cancelación) -> Solo cerramos el modal
+        onClose();
+    }
   };  
 
   return (

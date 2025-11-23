@@ -11,8 +11,6 @@ import {
   Plus, 
   Minus, 
   X,
-  CheckCircle,
-  AlertTriangle,
   ShoppingCart
 } from "lucide-react";
 import heroImage from "@/assets/hero-scanning.jpg";
@@ -23,7 +21,6 @@ import {mapProductFromApiToUI} from '@/types';
 export default function ProductScanner() {
   const [isScanning, setIsScanning] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [allProducts, setAllProducts] = useState<ProductUI[]>([]);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isTicketModalOpen, setIsTicketModalOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
@@ -50,7 +47,7 @@ const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const maxSize = 5 * 1024 * 1024; 
 
     if (!validTypes.includes(file.type)) {
-      toast({ title: "Error", description: "Solo JPG y PNG", variant: "destructive" });
+      toast({ title: "Error", description: "Solo archivos JPG y PNG", variant: "destructive" });
       return;
     }
     if (file.size > maxSize) {
@@ -71,8 +68,7 @@ const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
 // --- CAMBIO: Ahora recibe el archivo como parámetro ---
   const processImage = async (file: File) => {
     setIsScanning(true);
-    setCart([]); 
-    setAllProducts([]); 
+    setCart([]);
 
     try {
       // 1. Preparamos el formulario con la imagen
@@ -95,27 +91,18 @@ const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
       // 3. Transformamos los datos
       const formattedProducts = dataFromApi.map(mapProductFromApiToUI);
       
-      // 4. Actualizamos la lista. 
-      // OJO: Como la IA ya "eligió" los productos, podríamos agregarlos directamente al carrito
-      // para que sea más mágico, o mostrarlos en la lista de la izquierda.
-      // Vamos a ponerlos en la lista de la izquierda para que confirmes y agregues con el (+).
-      setAllProducts(formattedProducts);
-      
-      // OPCIONAL: Si querés que se agreguen al carrito automáticamente, descomentá esto:
-      /*
       setCart(formattedProducts.map(p => ({ ...p, quantity: 1 })));
-      */
 
       toast({
-        title: "¡Productos Identificados!",
+        title: "¡Productos identificados!",
         description: `La IA encontró ${formattedProducts.length} productos.`,
       });
 
     } catch (error: any) {
       console.error(error);
       toast({
-        title: "No se reconoció nada",
-        description: error.message || "Intenta con otra imagen más clara.",
+        title: "La IA no pudo reconocer los productos",
+        description: "Intentá sacar otra foto con mejor iluminación, desde otro ángulo o acercándote más.",
         variant: "destructive"
       });
       // Si falla, limpiamos la imagen seleccionada para que pueda intentar de nuevo
@@ -179,7 +166,7 @@ const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (cart.length === 0) {
       toast({
         title: "No hay productos",
-        description: "Escanea algunos productos primero",
+        description: "Subí una foto para detectar productos primero",
         variant: "destructive"
       });
       return;
@@ -190,7 +177,6 @@ const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
   const handleOrderGenerated = () => {
     // Limpiar el scanner después de generar el pedido
     setCart([]);
-    setAllProducts([]);
     setSelectedImage(null);
     
     toast({
@@ -278,7 +264,7 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
                 Escaneador de productos
               </h2>
               <p className="text-muted-foreground">
-                Identifica productos automáticamente con inteligencia artificial
+                Identificá productos automáticamente con Inteligencia Artificial
               </p>
             </div>
           </div>
@@ -288,9 +274,9 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
       {/* Scanning Controls */}
       <Card>
         <CardHeader>
-          <CardTitle>Capturar imagen</CardTitle>
+          <CardTitle>Cargar productos</CardTitle>
           <CardDescription>
-            Toma una foto o sube una imagen para identificar productos automáticamente
+            Sacá una foto o subí una imagen para armar el pedido automáticamente
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -302,7 +288,7 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
               disabled={isScanning}
             >
               <Camera className="h-8 w-8" />
-              Tomar foto
+              Sacar foto
             </Button>
             
             <Button
@@ -313,7 +299,7 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
               disabled={isScanning}
             >
               <Upload className="h-8 w-8" />
-              Subir imagen
+              Subir foto
             </Button>
           </div>
 
@@ -327,7 +313,7 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
 
           {selectedImage && (
             <div className="mt-4">
-              <p className="text-sm font-medium mb-2">Imagen seleccionada:</p>
+              <p className="text-sm font-medium mb-2">Foto:</p>
               <img
                 src={selectedImage}
                 alt="Selected"
@@ -346,7 +332,7 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
               <Loader2 className="h-12 w-12 text-primary animate-spin mx-auto" />
               <h3 className="text-lg font-semibold">Procesando imagen...</h3>
               <p className="text-muted-foreground">
-                Identificando productos con inteligencia artificial
+                La IA está identificando los productos
               </p>
               <Progress value={75} className="w-full max-w-sm mx-auto" />
             </div>
@@ -354,35 +340,8 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
         </Card>
       )}
 
-{/* Selection View */}
-{allProducts.length > 0 && !isScanning && (
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-    
-    {/* Columna Izquierda: Lista de todos los productos */}
-    <div>
-      <Card>
-        <CardHeader>
-          <CardTitle>Selección de productos</CardTitle>
-          <CardDescription>Haz clic para agregar productos a tu pedido</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 max-h-96 overflow-y-auto">
-          {allProducts.map(product => (
-            <div key={product.id} className="flex items-center justify-between p-2 border rounded-lg">
-              <div>
-                <p className="font-medium">{product.name}</p>
-                <p className="text-sm text-muted-foreground">SKU: {product.sku}</p>
-              </div>
-              <Button size="sm" variant="outline" onClick={() => handleAddToCart(product)}>
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-    </div>
-
-    {/* Columna Derecha: Pedido Actual*/}
-    <div>
+{/* Current Order View */}
+    {!isScanning && cart.length > 0 && (
       <Card>
         <CardHeader>
           <CardTitle>Pedido actual</CardTitle>
@@ -390,10 +349,7 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {cart.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Agrega productos de la lista de la izquierda</p>
-            ) : (
-              cart.map((product) => (
+            {cart.map((product) => (
                 <Card key={product.id} className="p-3">
                   <div className="flex items-center gap-4">
                     <img src={product.image_url} alt={product.name} className="w-12 h-12 object-cover rounded-md bg-muted"/>
@@ -415,25 +371,20 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
                     </div>
                   </div>
                 </Card>
-              ))
-            )}
+              ))}
 
-            {cart.length > 0 && (
-              <div className="flex flex-col items-end pt-4">
+              <div className="flex flex-col items-end pt-4 border-t">
                 <div className="font-bold text-lg mb-4">
                   Total: ${getTotalAmount()}
                 </div>
-                <Button size="lg" className="gap-2 w-full" onClick={handleGenerateOrder}>
+                <Button size="lg" className="gap-2 w-full md:w-auto" onClick={handleGenerateOrder}>
                   <ShoppingCart className="h-5 w-5" />
                   Generar pedido
                 </Button>
               </div>
-            )}
           </div>
         </CardContent>
       </Card>
-    </div>
-  </div>
 )}
 
       {/* Camera Modal */}
@@ -441,7 +392,7 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-background rounded-lg p-6 w-full max-w-2xl">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">Tomar foto</h3>
+              <h3 className="text-lg font-semibold">Sacar foto</h3>
               <Button variant="ghost" size="sm" onClick={closeCamera}>
                 <X className="h-4 w-4" />
               </Button>
@@ -454,7 +405,7 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
                   autoPlay
                   playsInline
                   muted
-                  className="w-full h-64 object-cover"
+                  className="w-full aspect-video object-cover rounded-lg bg-black"
                 />
               </div>
               
@@ -464,7 +415,7 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
                 </Button>
                 <Button onClick={capturePhoto}>
                   <Camera className="h-4 w-4 mr-2" />
-                  Tomar foto
+                  Sacar foto
                 </Button>
               </div>
             </div>
@@ -481,7 +432,6 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
         onClose={() => {
           setIsTicketModalOpen(false)
           setCart([]);
-          setAllProducts([]);
           setSelectedImage(null);
           if (fileInputRef.current) {
             fileInputRef.current.value = "";
