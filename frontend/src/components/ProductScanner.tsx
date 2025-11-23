@@ -437,7 +437,7 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
 
         <div className="flex flex-col items-end pt-4 border-t mt-4">
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-muted-foreground">Total:</span>
+            <span className="font-bold text-2xl">Total:</span>
             <span className="font-bold text-2xl">${getTotalAmount()}</span>
           </div>
           <Button 
@@ -496,14 +496,17 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
       {/* Modals */}
       <TicketModal
         isOpen={isTicketModalOpen}
-        onClose={() => {
-          setIsTicketModalOpen(false)
+        // 1. Si cancelan o cierran, SOLO ocultamos el modal (los datos quedan)
+        onClose={() => setIsTicketModalOpen(false)}
+
+        // 2. Esta función SOLO se ejecuta cuando la venta fue exitosa
+        onSaleComplete={() => {
+          setIsTicketModalOpen(false);
           setCart([]);
           setSelectedImage(null);
-          if (fileInputRef.current) {
-            fileInputRef.current.value = "";
-          }
+          if (fileInputRef.current) fileInputRef.current.value = "";
         }}
+        
         products={cart}
       />
     </div>

@@ -25,6 +25,7 @@ interface TicketModalProps {
   isOpen: boolean;
   onClose: () => void;
   products: CartItem[];
+  onSaleComplete: () => void;
 }
 
 interface FoundClient {
@@ -34,7 +35,7 @@ interface FoundClient {
 }
 
 
-export default function TicketModal({ isOpen, onClose, products}: TicketModalProps) {
+export default function TicketModal({ isOpen, onClose, products, onSaleComplete}: TicketModalProps) {
   const { toast } = useToast();
   const ticketRef = useRef(null);
   const [ticketData, setTicketData] = useState({
@@ -310,12 +311,14 @@ const handleDownloadPDF = () => {
   };
 
   const handleClose = () => {
-    resetState(); // Primero, reseteamos el estado interno
+    // Si hubo una venta confirmada, limpiamos todo el carrito del padre
     if (confirmedSaleId) {
+        onSaleComplete();
     } else {
-        // SI NO hubo venta (es una cancelación) -> Solo cerramos el modal
+        // Si no hubo venta (fue cancelar), solo cerramos el modal
         onClose();
     }
+    resetState(); // Reseteamos el estado interno
   };  
 
   return (
@@ -465,7 +468,7 @@ const handleDownloadPDF = () => {
             </div>
 
             <div className="flex gap-2">
-              <Button variant="outline" onClick={onClose} className="flex-1">
+              <Button variant="outline" onClick={handleClose} className="flex-1">
                 {confirmedSaleId ? 'Cerrar' : 'Cancelar'}
               </Button>
               <Button onClick={handleConfirmSale} className="flex-1 gap-2">
