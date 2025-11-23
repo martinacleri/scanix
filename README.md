@@ -1,7 +1,6 @@
 # 📦 SCANIX - Sistema de Reconocimiento de Productos
 
-> **Proyecto académico para la materia Ingeniería y Calidad de Software**
-> **Universidad Tecnológica Nacional FRSF - 2025**
+> **Proyecto académico para la materia Ingeniería y Calidad de Software** > **Universidad Tecnológica Nacional FRSF - 2025**
 
 ---
 
