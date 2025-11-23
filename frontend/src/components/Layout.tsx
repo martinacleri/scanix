@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { 
@@ -11,12 +11,22 @@ import {
   Menu,
   X,
   User,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Megaphone
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface LayoutProps {
   children: ReactNode;
+}
+
+// Definimos la forma de los datos del usuario que guardamos en el login
+interface UserData {
+  name: string;
+  surname: string;
+  role: string;
+  warehouseId: number;
+  warehouseName: string;
 }
 
 const navigation = [
@@ -25,16 +35,29 @@ const navigation = [
   { name: "Historial", href: "/history", icon: History },
   { name: "Inventario", href: "/inventory", icon: Warehouse },
   { name: "Transferencias", href: "/transfers", icon: ArrowRightLeft },
+  { name: "Marketing", href: "/marketing", icon: Megaphone },
   { name: "Reportes", href: "/reports", icon: BarChart3 },
 ];
 
 export default function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [user, setUser] = useState<UserData | null>(null); // Estado para el usuario
   const location = useLocation();
   const navigate = useNavigate();
 
+  // Cargar usuario desde localStorage al montar el componente
+  useEffect(() => {
+    const storedUser = localStorage.getItem("scanix_user");
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (error) {
+        console.error("Error al leer datos del usuario", error);
+      }
+    }
+  }, []);
+
   const handleLogout = () => {
-    // Mock logout functionality
     localStorage.removeItem("scanix_user");
     navigate("/login");
   };
@@ -109,10 +132,12 @@ export default function Layout({ children }: LayoutProps) {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground truncate">
-                  Andrés Scocco
+                  {/* DATOS DINÁMICOS DEL USUARIO */}
+                  {user ? `${user.name} ${user.surname}` : 'Cargando...'}
                 </p>
                 <p className="text-xs text-muted-foreground truncate">
-                  Depósito Central
+                  {/* DEPÓSITO DINÁMICO */}
+                  {user ? user.warehouseName : '...'}
                 </p>
               </div>
             </div>

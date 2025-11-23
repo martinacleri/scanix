@@ -13,3 +13,13 @@ export const getClientByDni = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Error al buscar el cliente.' });
     }
 };
+
+export const getAllClients = async (req: Request, res: Response) => {
+    try {
+        // Traemos todos los clientes ordenados por nombre
+        const clients = await knex('clients').select('*').orderBy('name', 'asc');
+        res.status(200).json(clients);
+    } catch (error) {
+        res.status(500).json({ error: 'Error al obtener los clientes.' });
+    }
+};
