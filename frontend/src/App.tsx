@@ -8,7 +8,6 @@ import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Catalog from "./pages/Catalog";
-import History from "./pages/History";
 import Inventory from "./pages/Inventory";
 import Transfers from "./pages/Transfers";
 import Reports from "./pages/Reports";
@@ -55,14 +54,6 @@ const App = () => (
             element={
               <ProtectedRoute>
                 <Catalog />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/history"
-            element={
-              <ProtectedRoute>
-                <History />
               </ProtectedRoute>
             }
           />

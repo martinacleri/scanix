@@ -32,7 +32,6 @@ interface UserData {
 const navigation = [
   { name: "Escanear", href: "/", icon: Camera },
   { name: "Catálogo", href: "/catalog", icon: Package },
-  { name: "Historial", href: "/history", icon: History },
   { name: "Inventario", href: "/inventory", icon: Warehouse },
   { name: "Transferencias", href: "/transfers", icon: ArrowRightLeft },
   { name: "Marketing", href: "/marketing", icon: Megaphone },
