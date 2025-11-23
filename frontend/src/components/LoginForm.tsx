@@ -1,25 +1,16 @@
-import { useState, useEffect } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Camera, Eye, EyeOff, AlertTriangle } from "lucide-react";
-
-interface WarehouseData {
-  id: number;
-  name: string;
-}
 
 export default function LoginForm() {
   const [dni, setDni] = useState("");
   const [password, setPassword] = useState("");
-  const [selectedWarehouse, setSelectedWarehouse] = useState("");
-  const [warehouses, setWarehouses] = useState<WarehouseData[]>([]);
-  
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -27,30 +18,13 @@ export default function LoginForm() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // Cargar los depósitos al iniciar
-  useEffect(() => {
-    const fetchWarehouses = async () => {
-      try {
-        const response = await fetch('http://localhost:5000/api/warehouses');
-        if (response.ok) {
-          const data = await response.json();
-          setWarehouses(data);
-        }
-      } catch (error) {
-        console.error("Error cargando depósitos:", error);
-        setError("No se pudo conectar con el servidor.");
-      }
-    };
-    fetchWarehouses();
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     
-    if (!selectedWarehouse) {
-      setError("Por favor, selecciona el depósito donde vas a trabajar.");
-      return;
+    if (!dni || !password) {
+        setError("Por favor ingresa su DNI y contraseña.");
+        return;
     }
 
     setIsLoading(true);
@@ -72,17 +46,15 @@ export default function LoginForm() {
             throw new Error(data.error || 'Error al iniciar sesión');
         }
 
-        // Verificamos el depósito (Opcional: aquí podrías validar si el usuario pertenece al depósito elegido)
-        const warehouseObj = warehouses.find(w => w.id.toString() === selectedWarehouse);
-
         // Guardamos los datos del usuario en localStorage
+        // (El depósito ya viene asignado desde el backend)
         const userData = {
           name: data.name,
           surname: data.surname,
           dni: data.dni,
           role: "Operario",
-          warehouseId: parseInt(selectedWarehouse),
-          warehouseName: warehouseObj?.name,
+          warehouseId: data.warehouseId, 
+          warehouseName: data.warehouseName,
           loginTime: new Date().toISOString()
         };
         
@@ -90,7 +62,7 @@ export default function LoginForm() {
 
         toast({
           title: "Inicio de sesión exitoso",
-          description: `Bienvenido/a, ${data.name} ${data.surname}`,
+          description: `Bienvenido, ${data.name} ${data.surname}`,
         });
         
         navigate("/");
@@ -127,7 +99,7 @@ export default function LoginForm() {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="dni">DNI (Usuario)</Label>
+              <Label htmlFor="dni">DNI</Label>
               <Input
                 id="dni"
                 type="text"
@@ -164,34 +136,13 @@ export default function LoginForm() {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label>Depósito de Trabajo</Label>
-              <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse} disabled={isLoading}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar depósito..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {warehouses.map((w) => (
-                    <SelectItem key={w.id} value={w.id.toString()}>
-                      {w.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             <Button
               type="submit"
-              className="w-full"
+              className="w-full mt-6"
               disabled={isLoading}
             >
               {isLoading ? "Iniciando sesión..." : "Iniciar sesión"}
             </Button>
-
-            {/* Enlace a Registro */}
-            <div className="text-center text-sm text-muted-foreground mt-4">
-                ¿No tienes una cuenta? <Link to="/register" className="text-primary hover:underline">Regístrate aquí</Link>
-            </div>
           </form>
         </CardContent>
       </Card>

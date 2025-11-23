@@ -64,7 +64,7 @@ export default function RegisterForm() {
 
         if (!response.ok) throw new Error(data.error || 'Error al registrarse');
 
-        toast({ title: "Registro exitoso", description: "Ya puedes iniciar sesión con tu DNI." });
+        toast({ title: "Registro exitoso", description: "El operario ya puede iniciar sesión con su DNI." });
         navigate("/login");
 
     } catch (err: any) {
@@ -83,8 +83,8 @@ export default function RegisterForm() {
               <Camera className="h-10 w-10 text-primary-foreground" />
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold">Alta de Operario</CardTitle>
-          <CardDescription>Registrar nuevo personal en SCANIX</CardDescription>
+          <CardTitle className="text-2xl font-bold">SCANIX</CardTitle>
+          <CardDescription>Registro de nuevo personal</CardDescription>
         </CardHeader>
         
         <CardContent>
@@ -99,17 +99,17 @@ export default function RegisterForm() {
             <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Nombre</Label>
-                  <Input value={formData.name} onChange={(e) => handleChange("name", e.target.value)} required />
+                  <Input placeholder="Ingrese el nombre" value={formData.name} onChange={(e) => handleChange("name", e.target.value)} required />
                 </div>
                 <div className="space-y-2">
                   <Label>Apellido</Label>
-                  <Input value={formData.surname} onChange={(e) => handleChange("surname", e.target.value)} required />
+                  <Input placeholder="Ingrese el apellido" value={formData.surname} onChange={(e) => handleChange("surname", e.target.value)} required />
                 </div>
             </div>
 
             <div className="space-y-2">
-              <Label>DNI (Usuario)</Label>
-              <Input type="number" placeholder="Sin puntos" value={formData.dni} onChange={(e) => handleChange("dni", e.target.value)} required />
+              <Label>DNI</Label>
+              <Input placeholder="Ingrese el DNI sin puntos" value={formData.dni} onChange={(e) => handleChange("dni", e.target.value)} required />
             </div>
 
             <div className="space-y-2">
@@ -117,6 +117,7 @@ export default function RegisterForm() {
               <div className="relative">
                 <Input
                   type={showPassword ? "text" : "password"}
+                  placeholder="Ingrese la contraseña"
                   value={formData.password}
                   onChange={(e) => handleChange("password", e.target.value)}
                   required
@@ -128,7 +129,7 @@ export default function RegisterForm() {
             </div>
 
             <div className="space-y-2">
-              <Label>Depósito Asignado</Label>
+              <Label>Depósito</Label>
               <Select value={formData.warehouse_id} onValueChange={(val) => handleChange("warehouse_id", val)}>
                 <SelectTrigger><SelectValue placeholder="Seleccionar depósito..." /></SelectTrigger>
                 <SelectContent>
@@ -140,12 +141,9 @@ export default function RegisterForm() {
             </div>
 
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "Registrando..." : "Registrar Operario"}
+              {isLoading ? "Registrando..." : "Registrar nuevo operario"}
             </Button>
             
-            <div className="text-center text-sm text-muted-foreground mt-4">
-                ¿Ya tenés cuenta? <Link to="/login" className="text-primary hover:underline">Iniciar Sesión</Link>
-            </div>
           </form>
         </CardContent>
       </Card>
