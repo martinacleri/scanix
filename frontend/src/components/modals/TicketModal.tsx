@@ -421,7 +421,7 @@ const handleDownloadPDF = () => {
             Ticket de venta
           </DialogTitle>
           <DialogDescription>
-            {confirmedSaleId ? `Venta #${confirmedSaleId} confirmada` : 'Revisa los detalles antes de confirmar la venta.'}
+            {confirmedSaleId ? `Venta #${confirmedSaleId} confirmada` : 'Revisá los detalles antes de confirmar la venta.'}
           </DialogDescription>
         </DialogHeader>
 
