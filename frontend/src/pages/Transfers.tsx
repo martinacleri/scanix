@@ -517,7 +517,7 @@ const capturePhoto = async () => {
             {/* 2. Miniatura de la foto (Igual a ProductScanner: max-w-xs h-32) */}
             {scannedImage && (
               <div className="mt-4 flex flex-col items-center animate-in fade-in zoom-in duration-300">
-                <p className="text-sm font-medium mb-2 self-center">Foto capturada:</p>
+                <p className="text-sm font-medium mb-2 self-center">Foto:</p>
                 <img 
                   src={scannedImage} 
                   alt="Escaneo" 

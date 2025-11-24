@@ -65,17 +65,19 @@ const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     reader.readAsDataURL(file);
   };
 
-// --- CAMBIO: Ahora recibe el archivo como parámetro ---
-  const processImage = async (file: File) => {
+const processImage = async (file: File) => {
     setIsScanning(true);
     setCart([]);
 
     try {
-      // 1. Preparamos el formulario con la imagen
-      const formData = new FormData();
-      formData.append('image', file); // 'image' debe coincidir con lo que espera Multer en el backend
+      // 1. Obtener ID del depósito del usuario logueado
+      const userStr = localStorage.getItem("scanix_user");
+      const warehouseId = userStr ? JSON.parse(userStr).warehouseId : null;
 
-      // 2. Llamamos al endpoint de RECONOCIMIENTO (ya no al de details)
+      const formData = new FormData();
+      formData.append('image', file);
+
+      // 2. Reconocimiento
       const response = await fetch('http://localhost:5000/api/recognize', {
         method: 'POST',
         body: formData,
@@ -88,24 +90,54 @@ const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
       
       const dataFromApi: ProductFromAPI[] = await response.json();
 
-      // 3. Transformamos los datos
-      const formattedProducts = dataFromApi.map(mapProductFromApiToUI);
+      // 3. ENRIQUECER CON STOCK (Igual que en Transfers)
+      const productsWithStock = await Promise.all(
+        dataFromApi.map(async (product) => {
+          try {
+            // Si tenemos warehouseId, buscamos el stock específico
+            if (warehouseId) {
+              const stockResponse = await fetch(
+                `http://localhost:5000/api/products/details?warehouseId=${warehouseId}`
+              );
+              if (stockResponse.ok) {
+                const stockData: ProductFromAPI[] = await stockResponse.json();
+                const productWithStock = stockData.find(p => p.id === product.id);
+                if (productWithStock) {
+                  return mapProductFromApiToUI(productWithStock);
+                }
+              }
+            }
+            // Fallback si falla la busqueda de stock
+            return mapProductFromApiToUI(product);
+          } catch (error) {
+            console.error(`Error stock producto ${product.id}`, error);
+            return mapProductFromApiToUI(product);
+          }
+        })
+      );
       
-      setCart(formattedProducts.map(p => ({ ...p, quantity: 1 })));
+      // Inicializamos con cantidad 1 (validando si hay stock > 0)
+      const validProducts = productsWithStock.map(p => ({ 
+        ...p, 
+        quantity: p.stock > 0 ? 1 : 0 
+      }));
+
+      // Filtramos si querés que no aparezcan los que tienen stock 0, 
+      // o los dejamos para que se vea que no hay stock.
+      setCart(validProducts);
 
       toast({
         title: "¡Productos identificados!",
-        description: `La IA encontró ${formattedProducts.length} productos.`,
+        description: `La IA encontró ${validProducts.length} productos.`,
       });
 
     } catch (error: any) {
       console.error(error);
       toast({
-        title: "La IA no pudo reconocer los productos",
-        description: "Intentá sacar otra foto con mejor iluminación, desde otro ángulo o acercándote más.",
+        title: "Error",
+        description: "No se pudo procesar la imagen.",
         variant: "destructive"
       });
-      // Si falla, limpiamos la imagen seleccionada para que pueda intentar de nuevo
       setSelectedImage(null);
     } finally {
       setIsScanning(false);
@@ -322,12 +354,12 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
           />
 
           {selectedImage && (
-            <div className="mt-4">
+            <div className="mt-4 flex flex-col items-center animate-in fade-in zoom-in duration-300">
               <p className="text-sm font-medium mb-2">Foto:</p>
               <img
                 src={selectedImage}
                 alt="Selected"
-                className="max-w-xs h-32 object-cover rounded-lg border"
+                className="max-w-xs h-32 object-cover rounded-lg border shadow-sm"
               />
             </div>
           )}
@@ -386,34 +418,41 @@ const capturePhoto = async () => { // <-- Agregamos async aquí
                   )}
                 </div>
                 
-                <div className="flex items-center gap-1">
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    className="h-7 w-7" 
-                    onClick={() => updateQuantity(product.id, -1)}
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
-                  <span className="w-8 text-center font-medium">{product.quantity}</span>
-                  <Button 
-                    variant="outline" 
-                    size="icon" 
-                    className="h-7 w-7" 
-                    onClick={() => updateQuantity(product.id, 1)}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-7 w-7 text-destructive" 
-                    onClick={() => removeProduct(product.id)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-1">
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      className="h-7 w-7" 
+                      onClick={() => updateQuantity(product.id, -1)}
+                      disabled={product.quantity <= 1} // Bloquea el menos en 1
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    
+                    <span className="w-8 text-center font-medium">{product.quantity}</span>
+                    
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      className="h-7 w-7" 
+                      onClick={() => updateQuantity(product.id, 1)}
+                      disabled={product.quantity >= product.stock} // ¡AQUÍ ESTÁ LA MAGIA!
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                    
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="h-7 w-7 text-destructive" 
+                      onClick={() => removeProduct(product.id)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
               </div>
+            </div>
 
               <div className="bg-muted/50 px-3 py-2 flex justify-between items-center border-t text-sm">
                 <div>
