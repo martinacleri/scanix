@@ -49,35 +49,69 @@ export default function Catalog() {
   const [productToDelete, setProductToDelete] = useState<ProductUI | null>(null);
   const [isDeleteAlertOpen, setIsDeleteAlertOpen] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
-        setIsLoading(true);
-        try {
-          // Usamos Promise.all para hacer ambas llamadas en paralelo
-          const [productsResponse, categoriesResponse] = await Promise.all([
-            fetch('http://localhost:5000/api/products/details'),
-            fetch('http://localhost:5000/api/categories')
-          ]);
-          if (!productsResponse.ok || !categoriesResponse.ok) {
-            throw new Error('Error al cargar los datos');
-          }
-          const productsData: ProductFromAPI[] = await productsResponse.json();
-          const categoriesData: Category[] = await categoriesResponse.json();
+  const getUserWarehouseId = (): string | null => {
+  const userDataString = localStorage.getItem("scanix_user");
+  if (!userDataString) return null;
+  
+  try {
+    const userData = JSON.parse(userDataString);
+    return userData.warehouseId?.toString() || null;
+  } catch (error) {
+    console.error("Error al leer datos del usuario:", error);
+    return null;
+  }
+};
 
-            // Transformamos los datos del backend al formato que el frontend necesita (ProductUI)
-            const formattedProducts = productsData.map(mapProductFromApiToUI);
-            setProducts(formattedProducts);
-            setCategories(categoriesData);
-        } catch (error) {
-            console.error(error);
-            toast({ title: "Error", description: "No se pudieron cargar los datos del servidor", variant: "destructive" });
-        } finally {
-            setIsLoading(false);
-        }
-    };
+useEffect(() => {
+  const fetchData = async () => {
+    setIsLoading(true);
+    
+    // Obtenemos el warehouse_id del usuario logueado
+    const warehouseId = getUserWarehouseId();
+    
+    if (!warehouseId) {
+      toast({ 
+        title: "Error", 
+        description: "No se pudo obtener el depósito del usuario. Por favor, volvé a iniciar sesión.", 
+        variant: "destructive" 
+      });
+      setIsLoading(false);
+      return;
+    }
 
-    fetchData();
-  }, [refreshKey]); // Se volverá a ejecutar si refreshKey cambia
+    try {
+      // Agregamos el warehouseId como query parameter
+      const [productsResponse, categoriesResponse] = await Promise.all([
+        fetch(`http://localhost:5000/api/products/details?warehouseId=${warehouseId}`),
+        fetch('http://localhost:5000/api/categories')
+      ]);
+      
+      if (!productsResponse.ok || !categoriesResponse.ok) {
+        throw new Error('Error al cargar los datos');
+      }
+      
+      const productsData: ProductFromAPI[] = await productsResponse.json();
+      const categoriesData: Category[] = await categoriesResponse.json();
+
+      // Transformamos los datos del backend al formato que el frontend necesita
+      const formattedProducts = productsData.map(mapProductFromApiToUI);
+      setProducts(formattedProducts);
+      setCategories(categoriesData);
+      
+    } catch (error) {
+      console.error(error);
+      toast({ 
+        title: "Error", 
+        description: "No se pudieron cargar los datos del servidor", 
+        variant: "destructive" 
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  fetchData();
+}, [refreshKey]);
 
   const filteredProducts = products.filter(product => {
     const matchesSearch = product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||

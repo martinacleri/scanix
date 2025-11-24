@@ -181,14 +181,28 @@ export const deleteProduct = async (req: Request, res: Response) => {
 
 // Obtener productos con detalles (stock total)
 export const getProductsWithDetails = async (req: Request, res: Response) => {
+    // Recibimos el warehouse_id como query parameter
+    const { warehouseId } = req.query;
+
+    // Validación: Si no viene el warehouseId, devolvemos error
+    if (!warehouseId) {
+        return res.status(400).json({ 
+            error: 'Se requiere el ID del depósito (warehouseId)' 
+        });
+    }
+
     try {
-        // Obtenemos todos los productos y su stock total
+        // Ahora filtramos el stock por warehouse_id
         const products = await knex('products')
-            .leftJoin('stock', 'products.id', 'stock.product_id')
+            .leftJoin('stock', function() {
+                this.on('products.id', '=', 'stock.product_id')
+                    .andOn('stock.warehouse_id', '=', knex.raw('?', [warehouseId])); // Solo stock de este depósito
+            })
             .leftJoin('categories', 'products.category_id', 'categories.id')
             .select(
                 'products.*',
                 'categories.name as category_name',
+                // Stock solo del depósito específico
                 knex.raw('COALESCE(SUM(stock.quantity), 0) as totalStock')
             )
             .groupBy('products.id');
@@ -197,28 +211,30 @@ export const getProductsWithDetails = async (req: Request, res: Response) => {
             return res.status(200).json([]);
         }
 
-        // Obtenemos los IDs de los productos que encontramos.
+        // Obtenemos los IDs de los productos que encontramos
         const productIds = products.map(p => p.id);
 
-        // Buscamos TODAS las reglas de precio para esos productos en una sola consulta.
+        // Buscamos TODAS las reglas de precio para esos productos
         const allPriceRules = await knex('price_rules')
             .whereIn('product_id', productIds)
             .select('*');
 
-        // Mapeamos las reglas a cada producto para un acceso fácil.
+        // Mapeamos las reglas a cada producto
         const productsWithRules = products.map(product => {
             const rulesForThisProduct = allPriceRules.filter(
                 rule => rule.product_id === product.id
             );
             return {
                 ...product,
-                priceRules: rulesForThisProduct // Añadimos el array de reglas al producto
+                priceRules: rulesForThisProduct
             };
         });
 
         res.status(200).json(productsWithRules);
     } catch (error) {
         console.error(error);
-        res.status(500).json({ error: 'Ocurrió un error al obtener los productos con detalles.' });
+        res.status(500).json({ 
+            error: 'Ocurrió un error al obtener los productos con detalles.' 
+        });
     }
 };
