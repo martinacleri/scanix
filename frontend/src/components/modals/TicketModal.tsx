@@ -1,25 +1,25 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import type { ProductUI, ProductFromAPI, PriceRule, PriceRuleFromAPI, CartItem } from '@/types';
+import type { ProductUI, CartItem } from '@/types';
 import { 
   Receipt,
   Download,
-  Printer,
   Mail,
-  MessageSquare,
   Check,
   User,
   Calendar,
-  Warehouse
+  Warehouse,
+  AlertCircle,
+  Scissors,
+  Loader2
 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 interface TicketModalProps {
   isOpen: boolean;
@@ -32,17 +32,23 @@ interface FoundClient {
     id: number;
     name: string;
     surname: string;
+    email?: string;
 }
 
+interface TicketHeaderState {
+  vendor: string;
+  warehouse: string;
+  customerEmail: string;
+}
 
 export default function TicketModal({ isOpen, onClose, products, onSaleComplete}: TicketModalProps) {
   const { toast } = useToast();
   const ticketRef = useRef(null);
-  const [ticketData, setTicketData] = useState({
-    vendor: "Andrés Scocco",
-    warehouse: "Central",
-    customerEmail: "",
-    customerPhone: ""
+  
+  const [ticketHeader, setTicketHeader] = useState<TicketHeaderState>({ 
+    vendor: "", 
+    warehouse: "",
+    customerEmail: "" 
   });
 
   const [dni, setDni] = useState("");
@@ -50,7 +56,29 @@ export default function TicketModal({ isOpen, onClose, products, onSaleComplete}
   const [newClientName, setNewClientName] = useState("");
   const [newClientSurname, setNewClientSurname] = useState("");
   const [isClientLoading, setIsClientLoading] = useState(false);
+  const [isEmailSending, setIsEmailSending] = useState(false); // Estado para carga de email
   const [confirmedSaleId, setConfirmedSaleId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      const userStr = localStorage.getItem("scanix_user");
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        setTicketHeader(prev => ({
+          ...prev,
+          vendor: `${user.name} ${user.surname}`,
+          warehouse: user.warehouseName,
+          customerEmail: "" 
+        }));
+        setDni("");
+        setFoundClient(null);
+        setNewClientName("");
+        setNewClientSurname("");
+        setConfirmedSaleId(null);
+        setIsEmailSending(false);
+      }
+    }
+  }, [isOpen]);
 
  const getCurrentPrice = (product: ProductUI, quantity: number): number => {
     if (!product.priceRules || product.priceRules.length === 0) {
@@ -61,10 +89,10 @@ export default function TicketModal({ isOpen, onClose, products, onSaleComplete}
     return applicableRule ? applicableRule.price : product.price;
 };
   
-
   const handleDniBlur = async () => {
         if (!dni.trim()) {
             setFoundClient(null);
+            setTicketHeader(prev => ({ ...prev, customerEmail: "" }));
             return;
         }
 
@@ -73,11 +101,11 @@ export default function TicketModal({ isOpen, onClose, products, onSaleComplete}
             const response = await fetch(`http://localhost:5000/api/clients/dni/${dni}`);
             
             if (response.status === 404) {
-                // Cliente no encontrado, preparamos para crear uno nuevo
                 setFoundClient(null);
+                setTicketHeader(prev => ({ ...prev, customerEmail: "" }));
                 toast({
                     title: "Cliente nuevo",
-                    description: "Ingresa el nombre para registrar al nuevo cliente."
+                    description: "Complete los datos para registrarlo y enviarle ofertas."
                 });
                 return;
             }
@@ -87,8 +115,24 @@ export default function TicketModal({ isOpen, onClose, products, onSaleComplete}
             }
 
             const clientData = await response.json();
+            
             setFoundClient(clientData);
-            setNewClientName(""); // Limpiamos el campo de nuevo nombre
+            setNewClientName("");
+            setNewClientSurname("");
+            
+            if (clientData.email) {
+                setTicketHeader(prev => ({ ...prev, customerEmail: clientData.email }));
+                toast({
+                    description: `Cliente encontrado. Email recuperado: ${clientData.email}`,
+                });
+            } else {
+                setTicketHeader(prev => ({ ...prev, customerEmail: "" }));
+                toast({
+                    title: "Cliente sin email",
+                    description: "Este cliente existe pero no tiene email registrado. Por favor ingréselo.",
+                    variant: "default"
+                });
+            }
 
         } catch (error) {
             console.error(error);
@@ -106,37 +150,58 @@ export default function TicketModal({ isOpen, onClose, products, onSaleComplete}
     };
   };
 
-  const calculateTotal = () => {
-    return products.reduce((total, product) => {
-      const correctPrice = getCurrentPrice(product, product.quantity);
-      return total + (product.quantity * correctPrice);
-    }, 0);
+  const calculateTotals = () => {
+    return products.reduce((acc, product) => {
+      const unitPrice = getCurrentPrice(product, product.quantity); 
+      const originalPrice = product.price; 
+      
+      const lineTotal = product.quantity * unitPrice;
+      const lineOriginalTotal = product.quantity * originalPrice;
+      
+      return {
+        subtotal: acc.subtotal + lineOriginalTotal,
+        total: acc.total + lineTotal,
+        savings: acc.savings + (lineOriginalTotal - lineTotal)
+      };
+    }, { subtotal: 0, total: 0, savings: 0 });
   };
 
-const handleConfirmSale = async () => {
-        // Transformamos los productos al formato que espera la API
+  const { subtotal, total, savings } = calculateTotals();
+
+  const handleConfirmSale = async () => {
         const itemsForApi = products.map(p => ({
             productId: parseInt(p.id),
             quantity: p.quantity,
             price_per_unit: getCurrentPrice(p, p.quantity)
         }));
 
-        // Preparamos el cuerpo de la petición
+        const userStr = localStorage.getItem("scanix_user");
+        const user = userStr ? JSON.parse(userStr) : null;
+        
+        if (dni && !foundClient && (!newClientName || !newClientSurname)) {
+          toast({ title: "Datos incompletos", description: "Ingrese nombre y apellido del nuevo cliente.", variant: "destructive" });
+          return;
+        }
+
+        if (dni && !ticketHeader.customerEmail) {
+            toast({ 
+                title: "Email requerido para ofertas", 
+                description: "Para registrar al cliente en el sistema de ofertas, el email es obligatorio.", 
+                variant: "destructive" 
+            });
+            return;
+        }
+
         const body = {
-            warehouseId: 2, // Esto debería venir de un estado global, por ahora lo dejamos fijo
+            warehouseId: user?.warehouseId || 2, 
             items: itemsForApi,
             clientDni: dni || undefined,
             clientName: newClientName || undefined,
             clientSurname: newClientSurname || undefined,
+            clientEmail: ticketHeader.customerEmail || undefined, 
+            sellerId: user?.id
         };
         
-        // Validación: si se ingresó un DNI de un cliente nuevo, se debe ingresar un nombre y apellido
-        if (dni && !foundClient && (!newClientName || !newClientSurname)) {
-        toast({ title: "Datos requeridos", description: "Ingrese el nombre y apellido para el nuevo cliente.", variant: "destructive" });
-        return;
-    }
-
-        // Hacemos la llamada a la API
         try {
             const response = await fetch('http://localhost:5000/api/sales', {
                 method: 'POST',
@@ -175,18 +240,17 @@ const handleConfirmSale = async () => {
     };
 
 const handleDownloadPDF = () => {
-    // Creamos un PDF con el tamaño de un ticket de impresora térmica (80mm de ancho)
     const pdf = new jsPDF({
       orientation: 'portrait',
       unit: 'mm',
-      format: [80, 200] // Ancho: 100mm, Alto: 150mm (ajustable)
+      format: [80, 200]
     });
 
     const margin = 5;
     const docWidth = pdf.internal.pageSize.getWidth();
-    let y = 10; // Posición vertical inicial
+    let y = 10; 
 
-    // --- ENCABEZADO ---
+    // Header
     pdf.setFont('courier', 'bold');
     pdf.setFontSize(12);
     pdf.text('SCANIX', docWidth / 2, y, { align: 'center' });
@@ -194,104 +258,144 @@ const handleDownloadPDF = () => {
     
     pdf.setFont('courier', 'normal');
     pdf.setFontSize(8);
-    pdf.text('Sistema de ventas', docWidth / 2, y, { align: 'center' });
+    pdf.text('SISTEMA DE VENTAS', docWidth / 2, y, { align: 'center' });
     y += 8;
 
-    // --- INFORMACIÓN DEL TICKET ---
+    // Info Ticket
     pdf.setFontSize(7);
     pdf.text(`N°: ${displayTicketId}`, margin, y);
     pdf.text(`${dateTime.date} ${dateTime.time}`, docWidth - margin, y, { align: 'right' });
     y += 4;
-    pdf.text(`Operario: ${ticketData.vendor}`, margin, y);
+    pdf.text(`Cajero: ${ticketHeader.vendor}`, margin, y);
     y += 4;
-    pdf.text(`Depósito: ${ticketData.warehouse}`, margin, y);
-    y += 6;
+    pdf.text(`Sucursal: ${ticketHeader.warehouse}`, margin, y);
+    y += 4;
 
-    // --- LÍNEA SEPARADORA ---
+    if(dni) {
+         const cName = foundClient ? `${foundClient.name} ${foundClient.surname}` : `${newClientName} ${newClientSurname}`;
+         pdf.text(`Cliente: ${cName}`, margin, y);
+         y += 4;
+         pdf.text(`DNI: ${dni}`, margin, y);
+         y += 4;
+         if(ticketHeader.customerEmail) {
+            pdf.text(`Email: ${ticketHeader.customerEmail}`, margin, y);
+            y += 4;
+         }
+    }
+    
+    y += 2;
     pdf.line(margin, y, docWidth - margin, y);
     y += 5;
 
-    // --- CABECERA DE LA TABLA DE PRODUCTOS ---
+    // Tabla - Encabezados
     pdf.setFont('courier', 'bold');
-    pdf.text('PRODUCTO', margin, y);
-    pdf.text('CANT', 46, y, { align: 'center' });
-    pdf.text('PRECIO', 60, y, { align: 'right' });
-    pdf.text('SUBTOTAL', docWidth - margin, y, { align: 'right' });
+    
+    // NUEVAS POSICIONES PARA MÁS ESPACIO
+    const colProductX = margin;
+    const colQtyX = 38; // Movido un poco a la izquierda
+    const colPriceX = 60; // Movido a la derecha para separar de Cantidad
+    const colTotalX = docWidth - margin;
+
+    pdf.text('PRODUCTO', colProductX, y);
+    pdf.text('CANT.', colQtyX, y, { align: 'center' });
+    pdf.text('P. UNIT', colPriceX, y, { align: 'right' });
+    pdf.text('SUBT.', colTotalX, y, { align: 'right' });
+    
     y += 2;
     pdf.line(margin, y, docWidth - margin, y);
     y += 4;
 
-    // --- LISTA DE PRODUCTOS ---
+    // Items
     pdf.setFont('courier', 'normal');
     products.forEach(product => {
       const correctPrice = getCurrentPrice(product, product.quantity);
       const subtotal = product.quantity * correctPrice;
 
-      // jsPDF puede manejar el texto que ocupa varias líneas
-      const productNameLines = pdf.splitTextToSize(product.name, 38); // Ancho máximo para el nombre
+      const productNameLines = pdf.splitTextToSize(product.name, 32); 
       
-      pdf.text(productNameLines, margin, y);
-      pdf.text(product.quantity.toString(), 46, y, { align: 'center' });
-      pdf.text(`$${correctPrice.toFixed(2)}`, 60, y, { align: 'right' });
-      pdf.text(`$${subtotal.toFixed(2)}`, docWidth - margin, y, { align: 'right' });
+      pdf.text(productNameLines, colProductX, y);
       
-      y += (productNameLines.length * 3) + 3; 
+      // Alineamos los valores numéricos
+      pdf.text(product.quantity.toString(), colQtyX, y, { align: 'center' });
+      pdf.text(`$${correctPrice.toFixed(2)}`, colPriceX, y, { align: 'right' });
+      pdf.text(`$${subtotal.toFixed(2)}`, colTotalX, y, { align: 'right' });
+      
+      y += (productNameLines.length * 3) + 2; 
     });
 
-    // --- LÍNEA FINAL ---
     y += 2;
     pdf.line(margin, y, docWidth - margin, y);
     y += 5;
 
-    // --- TOTAL FINAL ---
+    // SECCIÓN TOTALES - ALINEADA A LA IZQUIERDA
+    if (savings > 0) {
+        pdf.setFontSize(8);
+        
+        // Subtotal
+        pdf.text('Subtotal:', margin, y); // Etiqueta a la izquierda
+        pdf.text(`$${subtotal.toFixed(2)}`, docWidth - margin, y, { align: 'right' });
+        y += 4;
+        
+        // Descuentos
+        pdf.text('Descuentos:', margin, y); // Etiqueta a la izquierda
+        pdf.text(`-$${savings.toFixed(2)}`, docWidth - margin, y, { align: 'right' });
+        y += 4;
+        
+        pdf.line(margin, y, docWidth - margin, y);
+        y += 4;
+    }
+
+    // Total Final
     pdf.setFont('courier', 'bold');
     pdf.setFontSize(10);
-    pdf.text('TOTAL:', 45, y, { align: 'right' });
-    pdf.text(`$${total.toFixed(2)}`, docWidth - margin, y, { align: 'right' });
+    pdf.text('TOTAL:', margin, y); // Etiqueta a la izquierda
+    pdf.text(`$${total.toFixed(2)}`, docWidth - margin, y, { align: 'right' }); // Monto a la derecha
 
-    // --- DESCARGAR EL PDF ---
     pdf.save(`venta-${confirmedSaleId || 'temp'}.pdf`);
 
     toast({
         title: "PDF generado",
-        description: `Se ha descargado el ticket de venta.`,
+        description: "El ticket se ha descargado correctamente.",
     });
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
-  const handleSendEmail = () => {
-    if (!ticketData.customerEmail) {
+  // --- NUEVA LÓGICA DE ENVÍO DE EMAIL ---
+  const handleSendEmail = async () => {
+    if (!ticketHeader.customerEmail || !confirmedSaleId) {
       toast({
-        title: "Email requerido",
-        description: "Ingresa el email del cliente",
+        title: "Error",
+        description: "Se necesita una venta confirmada y un email.",
         variant: "destructive"
       });
       return;
     }
 
-    toast({
-      title: "Email enviado",
-      description: `Ticket enviado a ${ticketData.customerEmail}`,
-    });
-  };
+    setIsEmailSending(true);
+    try {
+        const response = await fetch('http://localhost:5000/api/sales/send-ticket', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                saleId: confirmedSaleId, 
+                email: ticketHeader.customerEmail 
+            })
+        });
 
-  const handleSendWhatsApp = () => {
-    if (!ticketData.customerPhone) {
-      toast({
-        title: "Teléfono requerido",
-        description: "Ingresa el teléfono del cliente",
-        variant: "destructive"
-      });
-      return;
+        if (!response.ok) throw new Error("Error al enviar email");
+
+        toast({
+            title: "Email enviado",
+            description: `El ticket fue enviado a ${ticketHeader.customerEmail}`,
+        });
+    } catch (error) {
+        toast({
+            title: "Error",
+            description: "No se pudo enviar el email. Intente más tarde.",
+            variant: "destructive"
+        });
+    } finally {
+        setIsEmailSending(false);
     }
-
-    toast({
-      title: "WhatsApp enviado",
-      description: `Ticket enviado a ${ticketData.customerPhone}`,
-    });
   };
 
   const date = new Date();
@@ -299,31 +403,18 @@ const handleDownloadPDF = () => {
   const displayTicketId = confirmedSaleId ? `${datePrefix}-${confirmedSaleId}` : 'PENDIENTE';
 
   const dateTime = getCurrentDateTime();
-  const total = calculateTotal();
-
-  const resetState = () => {
-    setDni("");
-    setFoundClient(null);
-    setNewClientName("");
-    setNewClientSurname("");
-    setConfirmedSaleId(null);
-    setTicketData(prev => ({ ...prev, customerEmail: "", customerPhone: "" }));
-  };
-
+  
   const handleClose = () => {
-    // Si hubo una venta confirmada, limpiamos todo el carrito del padre
     if (confirmedSaleId) {
         onSaleComplete();
     } else {
-        // Si no hubo venta (fue cancelar), solo cerramos el modal
         onClose();
     }
-    resetState(); // Reseteamos el estado interno
   };  
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-5xl max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Receipt className="h-5 w-5" />
@@ -334,149 +425,221 @@ const handleDownloadPDF = () => {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
-          {/* Ticket Preview */}
-          <div ref={ticketRef} className="printable-ticket bg-muted/30 p-4 rounded-lg font-mono text-sm">
-            <div className="text-center mb-4">
-              <h3 className="font-bold text-lg">SCANIX</h3>
-              <p className="text-xs">Sistema de ventas</p>
-            </div>
-
-            <Separator className="my-3" />
-
-            {/* Header Info */}
-            <div className="grid grid-cols-2 gap-4 mb-4 text-xs">
-              <div className="flex items-center gap-1">
-                <Receipt className="h-3 w-3" />
-                <span>N°: {displayTicketId}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Calendar className="h-3 w-3" />
-                <span>{dateTime.date} {dateTime.time}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <User className="h-3 w-3" />
-                <span>Operario: {ticketData.vendor}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <Warehouse className="h-3 w-3" />
-                <span>Depósito: {ticketData.warehouse}</span>
-              </div>
-            </div>
-
-            <Separator className="my-3" />
-
-            {/* Products */}
-            <div className="space-y-2 mb-4">
-              <div className="grid grid-cols-4 gap-2 text-xs font-semibold">
-                <span>Producto</span>
-                <span className="text-center">Cantidad</span>
-                <span className="text-right">Precio unitario</span>
-                <span className="text-right">Subtotal</span>
-              </div>
-              
-              {products.map((product) => (
-                <div key={product.id} className="space-y-1">
-                  <div className="grid grid-cols-4 gap-2 text-xs">
-                    <span className="col-span-1 truncate">{product.name}</span>
-                    <span className="text-center">{product.quantity}</span>
-                    <span className="text-right">${getCurrentPrice(product, product.quantity).toFixed(2)}</span>
-                    <span className="text-right font-semibold">
-                      ${(product.quantity * getCurrentPrice(product, product.quantity)).toFixed(2)}
-                    </span>
-                  </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
+            
+            {/* COLUMNA IZQUIERDA: VISUALIZACIÓN DEL TICKET */}
+            <div className="space-y-4">
+                <div className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
+                    <Receipt className="h-4 w-4" /> Vista previa
                 </div>
-              ))}
-            </div>
-
-            <Separator className="my-3" />
-
-            <div className="text-right font-bold">
-              TOTAL: ${total.toFixed(2)}
-            </div>
-          </div>
-
-          {/* Customer Info */}
-          <div className="space-y-4">
-            <Label>Cliente</Label>
-              <div className="flex flex-col md:flex-row gap-4 items-start">
-                <div className="space-y-2 flex-1">
-                  <Label htmlFor="dni" className="text-xs">DNI</Label>
-                  <Input
-                    id="dni"
-                    value={dni}
-                    onChange={(e) => setDni(e.target.value)}
-                    onBlur={handleDniBlur}
-                    placeholder="Buscar por DNI"
-                    disabled={isClientLoading || !!confirmedSaleId}
-                  />
-            </div>
-
-
-                {dni && !foundClient && (
-                    <>
-                        <div className="space-y-2">
-                            <Label htmlFor="name" className="text-xs">Nombre</Label>
-                            <Input id="name" value={newClientName} onChange={(e) => setNewClientName(e.target.value)} placeholder="Nombre del nuevo cliente" disabled={!!confirmedSaleId}/>
-                        </div>
-                        <div className="space-y-2">
-                            <Label htmlFor="surname" className="text-xs">Apellido</Label>
-                            <Input id="surname" value={newClientSurname} onChange={(e) => setNewClientSurname(e.target.value)} placeholder="Apellido del nuevo cliente" disabled={!!confirmedSaleId}/>
-                        </div>
-                    </>
-                )}
-                {foundClient && (
-                    <div className="md:col-span-2 flex items-center gap-2 pt-6 text-green-600">
-                        <Check className="h-4 w-4" />
-                        <span className="font-semibold">{foundClient.name} {foundClient.surname}</span>
+                <div ref={ticketRef} className="printable-ticket bg-white border shadow-md p-6 rounded-sm font-mono text-sm text-slate-800 mx-auto w-full max-w-[380px]">
+                    <div className="text-center mb-6">
+                        <h3 className="font-bold text-xl tracking-wider">SCANIX</h3>
+                        <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Sistema de ventas</p>
                     </div>
-                )}
-            </div>
-          </div>
 
-          {/* Campos de contacto */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                  <Label htmlFor="email">Email (opcional)</Label>
-                  <Input id="email" type="email" value={ticketData.customerEmail} onChange={(e) => setTicketData(prev => ({ ...prev, customerEmail: e.target.value }))} placeholder="cliente@email.com" disabled={!!confirmedSaleId} />
-              </div>
-              <div className="space-y-2">
-                  <Label htmlFor="phone">WhatsApp (opcional)</Label>
-                  <Input id="phone" value={ticketData.customerPhone} onChange={(e) => setTicketData(prev => ({ ...prev, customerPhone: e.target.value }))} placeholder="+54 11 1234 5678" disabled={!!confirmedSaleId} />
-              </div>
-          </div>
+                    <Separator className="my-4 border-dashed border-slate-300" />
 
-          {/* Actions */}
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              <Button variant="outline" size="sm" onClick={handleDownloadPDF} disabled={!confirmedSaleId} className="gap-1">
-                <Download className="h-4 w-4" />
-                PDF
-              </Button>
-              <Button variant="outline" size="sm" onClick={handlePrint} disabled={!confirmedSaleId} className="gap-1">
-                <Printer className="h-4 w-4" />
-                Imprimir
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleSendEmail} disabled={!confirmedSaleId} className="gap-1">
-                <Mail className="h-4 w-4" />
-                Email
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleSendWhatsApp} disabled={!confirmedSaleId} className="gap-1">
-                <MessageSquare className="h-4 w-4" />
-                WhatsApp
-              </Button>
+                    <div className="flex justify-between text-xs mb-1.5">
+                        <span className="text-slate-500">N° Ticket:</span>
+                        <span className="font-bold">{displayTicketId}</span>
+                    </div>
+                    <div className="flex justify-between text-xs mb-1.5">
+                        <span className="text-slate-500">Fecha:</span>
+                        <span>{dateTime.date} {dateTime.time}</span>
+                    </div>
+                    <div className="flex justify-between text-xs mb-1.5">
+                        <span className="text-slate-500">Cajero:</span>
+                        <span className="truncate max-w-[150px]">{ticketHeader.vendor}</span>
+                    </div>
+                    <div className="flex justify-between text-xs mb-1.5">
+                         <span className="text-slate-500">Sucursal:</span>
+                         <span>{ticketHeader.warehouse}</span>
+                    </div>
+
+                    <Separator className="my-4 border-dashed border-slate-300" />
+
+                    {/* Encabezados Tabla */}
+                    <div className="grid grid-cols-12 gap-1 text-[11px] font-bold uppercase text-slate-500 mb-2 border-b border-slate-200 pb-1">
+                        <span className="col-span-5">Producto</span>
+                        <span className="col-span-2 text-center">Cant.</span>
+                        <span className="col-span-2 text-right">P. Unit.</span>
+                        <span className="col-span-3 text-right">Subt.</span>
+                    </div>
+                    
+                    {/* Lista Productos */}
+                    <div className="space-y-3 mb-4 min-h-[120px]">
+                    {products.map((product) => {
+                        const unitPrice = getCurrentPrice(product, product.quantity);
+                        //const hasDiscount = unitPrice < product.price; 
+                        
+                        return (
+                            <div key={product.id} className="grid grid-cols-12 gap-1 text-xs items-center group">
+                                <span className="col-span-5 truncate font-medium text-slate-700">{product.name}</span>
+                                <span className="col-span-2 text-center text-slate-600">{product.quantity}</span>
+                                <span className="col-span-2 text-right text-slate-700">${unitPrice.toFixed(0)}</span>
+                                <span className="col-span-3 text-right font-bold text-slate-800">
+                                    ${(product.quantity * unitPrice).toFixed(0)}
+                                </span>
+                            </div>
+                        );
+                    })}
+                    </div>
+
+                    <Separator className="my-4 border-dashed border-slate-300" />
+
+                    {/* SECCIÓN DE RESUMEN Y DESCUENTOS */}
+                    {savings > 0 && (
+                        <div className="space-y-2 mb-4 text-xs">
+                            <div className="flex justify-between text-slate-500">
+                                <span>Subtotal</span>
+                                <span>${subtotal.toFixed(2)}</span>
+                            </div>
+                            <div className="flex justify-between text-green-600 font-medium">
+                                <span className="flex items-center gap-1">Descuentos aplicados</span>
+                                <span>-${savings.toFixed(2)}</span>
+                            </div>
+                            <Separator className="my-2 border-dashed border-slate-200" />
+                        </div>
+                    )}
+
+                    <div className="flex justify-between items-end">
+                        <span className="font-bold text-xl">TOTAL</span>
+                        <span className="font-bold text-2xl tracking-tight">${total.toFixed(2)}</span>
+                    </div>
+                </div>
             </div>
 
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={handleClose} className="flex-1">
-                {confirmedSaleId ? 'Cerrar' : 'Cancelar'}
-              </Button>
-              <Button onClick={handleConfirmSale} className="flex-1 gap-2">
-                <Check className="h-4 w-4" />
-                Confirmar venta
-              </Button>
+            {/* COLUMNA DERECHA: DATOS CLIENTE Y ACCIONES */}
+            <div className="flex flex-col justify-between h-full">
+                <div className="space-y-6">
+                     {/* Panel de Cliente */}
+                    <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 space-y-5">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="p-2 bg-primary/10 rounded-lg">
+                                    <User className="h-5 w-5 text-primary" />
+                                </div>
+                                <div>
+                                    <h3 className="font-semibold text-sm text-slate-900">Datos del cliente</h3>
+                                    <p className="text-xs text-slate-500">Identificación y contacto</p>
+                                </div>
+                            </div>
+                            {dni && (
+                                <span className="text-[10px] bg-green-100 text-green-700 px-3 py-1 rounded-full font-bold tracking-wide uppercase">
+                                    Fidelización activa
+                                </span>
+                            )}
+                        </div>
+                        
+                        <div className="space-y-4">
+                            <div className="space-y-1.5">
+                                <Label htmlFor="dni" className="text-xs font-medium text-slate-600">DNI</Label>
+                                <div className="flex gap-2">
+                                    <Input
+                                        id="dni"
+                                        value={dni}
+                                        onChange={(e) => setDni(e.target.value)}
+                                        onBlur={handleDniBlur}
+                                        placeholder="Ingrese DNI para buscar o registrar"
+                                        className="h-10 border-slate-300 focus-visible:ring-primary/20"
+                                        disabled={isClientLoading || !!confirmedSaleId}
+                                    />
+                                </div>
+                                {!dni && <p className="text-[11px] text-slate-400 flex items-center gap-1"><AlertCircle className="h-3 w-3"/> Si se deja vacío, la venta será anónima.</p>}
+                            </div>
+
+                            {/* Campos condicionales */}
+                            {dni && (
+                                <div className="space-y-4 animate-in fade-in slide-in-from-top-3 duration-500 border-t border-slate-200 pt-4 mt-2">
+                                    {isClientLoading ? (
+                                        <div className="py-8 text-center text-sm text-muted-foreground flex flex-col items-center gap-3">
+                                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                                            <span>Buscando cliente en base de datos...</span>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="space-y-1.5">
+                                                    <Label htmlFor="name" className="text-xs font-medium text-slate-600">Nombre <span className="text-red-500">*</span></Label>
+                                                    <Input 
+                                                        id="name" 
+                                                        value={foundClient ? foundClient.name : newClientName} 
+                                                        onChange={(e) => setNewClientName(e.target.value)} 
+                                                        disabled={!!foundClient || !!confirmedSaleId}
+                                                        className="h-9 text-sm bg-white border-slate-300"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1.5">
+                                                    <Label htmlFor="surname" className="text-xs font-medium text-slate-600">Apellido <span className="text-red-500">*</span></Label>
+                                                    <Input 
+                                                        id="surname" 
+                                                        value={foundClient ? foundClient.surname : newClientSurname} 
+                                                        onChange={(e) => setNewClientSurname(e.target.value)} 
+                                                        disabled={!!foundClient || !!confirmedSaleId}
+                                                        className="h-9 text-sm bg-white border-slate-300"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-1.5">
+                                                <div className="flex justify-between items-center">
+                                                    <Label htmlFor="email" className="text-xs font-medium text-slate-600">Email <span className="text-red-500">*</span></Label>
+                                                    <span className="text-[10px] text-primary font-medium">Requerido para ofertas</span>
+                                                </div>
+                                                <Input 
+                                                    id="email" 
+                                                    type="email" 
+                                                    value={ticketHeader.customerEmail} 
+                                                    onChange={(e) => setTicketHeader(prev => ({ ...prev, customerEmail: e.target.value }))} 
+                                                    placeholder="cliente@ejemplo.com" 
+                                                    disabled={!!confirmedSaleId} 
+                                                    className="h-10 bg-white border-slate-300"
+                                                />
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Acciones Finales */}
+                <div className="space-y-4 pt-6 mt-auto">
+                    <Button 
+                        onClick={handleConfirmSale} 
+                        className="w-full gap-2 font-bold text-md h-12 shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all" 
+                        size="lg"
+                        disabled={!!confirmedSaleId}
+                    >
+                        <Check className="h-5 w-5" />
+                        {confirmedSaleId ? 'Venta registrada' : `Confirmar venta`}
+                    </Button>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                        <Button variant="outline" onClick={handleDownloadPDF} disabled={!confirmedSaleId} className="gap-2 h-10 border-slate-300 hover:bg-slate-50">
+                            <Download className="h-4 w-4" />Descargar PDF
+                        </Button>
+                        <Button 
+                            variant="outline" 
+                            onClick={handleSendEmail} 
+                            disabled={!confirmedSaleId || !ticketHeader.customerEmail || isEmailSending} 
+                            className="gap-2 h-10 border-slate-300 hover:bg-slate-50"
+                        >
+                            {isEmailSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                            {isEmailSending ? "Enviando..." : "Enviar por email"}
+                        </Button>
+                    </div>
+
+                    <div className="text-center pt-2">
+                        <Button variant="link" onClick={handleClose} className="text-slate-400 hover:text-slate-600 h-auto p-0 text-xs">
+                            {confirmedSaleId ? 'Cerrar' : 'Cancelar'}
+                        </Button>
+                    </div>
+                </div>
             </div>
-          </div>
+
         </div>
       </DialogContent>
     </Dialog>
