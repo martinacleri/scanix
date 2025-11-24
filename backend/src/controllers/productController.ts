@@ -226,7 +226,11 @@ export const getProductsWithDetails = async (req: Request, res: Response) => {
             );
             return {
                 ...product,
-                priceRules: rulesForThisProduct
+                priceRules: rulesForThisProduct.map(r => ({
+                    from: r.min_quantity,
+                    to: r.max_quantity,
+                    price: parseFloat(r.price)
+                }))
             };
         });
 

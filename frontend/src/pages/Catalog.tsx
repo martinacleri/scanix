@@ -136,6 +136,8 @@ useEffect(() => {
   const handleEditProduct = (productId: string) => {
     // Buscamos el producto completo en nuestra lista de productos
     const product = products.find(p => p.id === productId);
+    console.log('🔍 Producto a editar:', product);
+    console.log('🔍 PriceRules:', product?.priceRules);
     if (product) {
         setProductToEdit(product); // Guardamos el producto para pasárselo al modal
         setIsAddModalOpen(true); // Abrimos el modal
@@ -225,7 +227,6 @@ const handleDeleteProduct = async (productId: string, productName: string) => {
   const handleClearFilters = () => {
     setSearchTerm("");
     setSelectedCategoryId("all"); // Reseteamos el ID
-    toast({ title: "Filtros limpiados" });
   };
 
   const handleProductAdded = () => {
@@ -241,7 +242,7 @@ const handleDeleteProduct = async (productId: string, productName: string) => {
           <div>
             <h1 className="text-3xl font-bold text-foreground">Catálogo de productos</h1>
             <p className="text-muted-foreground">
-              Gestiona tu inventario de productos y precios
+              Gestioná tu inventario de productos y precios
             </p>
           </div>
           <Button className="gap-2" onClick={handleAddProduct}>
@@ -267,11 +268,6 @@ const handleDeleteProduct = async (productId: string, productName: string) => {
               </div>
               
               <div className="flex gap-2">
-                <Button variant="outline" className="gap-2" onClick={handleMoreFilters}>
-                  <Filter className="h-4 w-4" />
-                  Filtros
-                </Button>
-                
                 <select
                   value={selectedCategoryId}
                   onChange={(e) => setSelectedCategoryId(e.target.value)}
@@ -291,7 +287,6 @@ const handleDeleteProduct = async (productId: string, productName: string) => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProducts.map((product) => {
             console.log("Datos del producto que se está mostrando:", product);
-            const stockStatus = getStockStatus(product.stock);
             
             return (
               <Card key={product.id} className="overflow-hidden">
@@ -301,11 +296,6 @@ const handleDeleteProduct = async (productId: string, productName: string) => {
                     alt={product.name}
                     className="w-full h-full object-cover"
                   />
-                  <div className="absolute top-2 right-2">
-                    <Badge variant={stockStatus.color as any}>
-                      Stock: {stockStatus.text}
-                    </Badge>
-                  </div>
                 </div>
                 
                 <CardHeader className="pb-3">
@@ -316,7 +306,6 @@ const handleDeleteProduct = async (productId: string, productName: string) => {
                       </CardTitle>
                       <CardDescription>
                         SKU: {product.sku}
-                        {product.category_name && product.category_name !== 'Sin categoría' && ` • ${product.category_name}`}
                       </CardDescription>
                       {/* Solo mostramos la descripción si no es nula o vacía */}
                       {product.description && (
@@ -330,15 +319,10 @@ const handleDeleteProduct = async (productId: string, productName: string) => {
                 
                 <CardContent className="pt-0">
                   <div className="space-y-3">
-                    {/* Stock and Price */}
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">
-                        Stock: {product.stock} unidades
-                      </span>
-                      <div className="flex items-center gap-1 text-lg font-semibold">
-                        <DollarSign className="h-4 w-4" />
-                        {product.price.toFixed(2)}
-                      </div>
+                    {/* Price */}
+                    <div className="flex items-center justify-between text-sm font-semibold">
+                      <span className="text-muted-foreground">Precio unitario</span>
+                      <span className="text-lg font-bold">${product.price.toFixed(2)}</span>
                     </div>
                     
                     {/* Actions */}
@@ -377,7 +361,7 @@ const handleDeleteProduct = async (productId: string, productName: string) => {
                   No se encontraron productos
                 </h3>
                 <p className="text-muted-foreground mb-4">
-                  Intenta ajustar los criterios de búsqueda
+                  Intentá ajustar los criterios de búsqueda
                 </p>
                 <Button variant="outline" onClick={handleClearFilters}>
                   Limpiar filtros

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
@@ -9,156 +9,150 @@ import {
   Search, 
   Warehouse, 
   Package, 
-  AlertTriangle,
-  TrendingDown,
-  TrendingUp,
-  Filter,
-  Download
+  AlertTriangle
 } from "lucide-react";
 import Layout from "@/components/Layout";
 import AdjustStockModal from "@/components/modals/AdjustStockModal";
+import type { ProductUI, ProductFromAPI } from '@/types';
+import { mapProductFromApiToUI } from '@/types';
 
-interface InventoryItem {
-  id: string;
-  name: string;
-  sku: string;
-  category: string;
-  currentStock: number;
-  minStock: number;
-  maxStock: number;
-  price: number;
-  lastMovement: string;
-  movementType: "entrada" | "salida";
-  warehouse: string;
+interface InventoryItem extends ProductUI {
+  // Ya tiene todo lo que necesitamos
 }
 
 export default function Inventory() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedWarehouse, setSelectedWarehouse] = useState("all");
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const { toast } = useToast();
 
-  const warehouses = ["Todos", "Depósito Central", "Depósito Norte", "Depósito Sur"];
+  const [products, setProducts] = useState<InventoryItem[]>([]);
+  const [warehouses, setWarehouses] = useState<{ id: number; name: string }[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Mock inventory data
-  const inventory: InventoryItem[] = [
-    {
-      id: "1",
-      name: "Aceite de Oliva Extra Virgen 500ml",
-      sku: "AOL-500",
-      category: "Aceites",
-      currentStock: 45,
-      minStock: 20,
-      maxStock: 100,
-      price: 8.50,
-      lastMovement: "2024-01-15",
-      movementType: "salida",
-      warehouse: "Depósito Central"
-    },
-    {
-      id: "2",
-      name: "Arroz Integral 1kg",
-      sku: "ARR-1000", 
-      category: "Granos",
-      currentStock: 8,
-      minStock: 15,
-      maxStock: 80,
-      price: 3.20,
-      lastMovement: "2024-01-14",
-      movementType: "salida",
-      warehouse: "Depósito Central"
-    },
-    {
-      id: "3",
-      name: "Pasta Italiana 500g",
-      sku: "PAS-500",
-      category: "Pastas",
-      currentStock: 67,
-      minStock: 25,
-      maxStock: 120,
-      price: 2.90,
-      lastMovement: "2024-01-13",
-      movementType: "entrada",
-      warehouse: "Depósito Norte"
-    },
-    {
-      id: "4",
-      name: "Conserva de Tomate 400g",
-      sku: "CON-400",
-      category: "Conservas",
-      currentStock: 2,
-      minStock: 10,
-      maxStock: 60,
-      price: 1.80,
-      lastMovement: "2024-01-12",
-      movementType: "salida", 
-      warehouse: "Depósito Central"
+  // Función para obtener el warehouse_id del usuario logueado
+  const getUserWarehouseId = (): string | null => {
+    const userDataString = localStorage.getItem("scanix_user");
+    if (!userDataString) return null;
+    
+    try {
+      const userData = JSON.parse(userDataString);
+      return userData.warehouseId?.toString() || null;
+    } catch (error) {
+      console.error("Error al leer datos del usuario:", error);
+      return null;
     }
-  ];
+  };
 
-  const filteredInventory = inventory.filter(item => {
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      
+      try {
+        // Determinamos qué depósito cargar
+        const warehouseIdToFetch = selectedWarehouseId === "all" 
+          ? getUserWarehouseId() 
+          : selectedWarehouseId;
+
+        if (!warehouseIdToFetch) {
+          toast({ 
+            title: "Error", 
+            description: "No se pudo obtener el depósito del usuario", 
+            variant: "destructive" 
+          });
+          return;
+        }
+
+        const [productsResponse, warehousesResponse] = await Promise.all([
+          fetch(`http://localhost:5000/api/products/details?warehouseId=${warehouseIdToFetch}`),
+          fetch('http://localhost:5000/api/warehouses')
+        ]);
+        
+        if (!productsResponse.ok || !warehousesResponse.ok) {
+          throw new Error('Error al cargar los datos');
+        }
+        
+        const productsData: ProductFromAPI[] = await productsResponse.json();
+        const warehousesData = await warehousesResponse.json();
+
+        const formattedProducts = productsData.map(mapProductFromApiToUI);
+        setProducts(formattedProducts);
+        setWarehouses(warehousesData);
+        
+      } catch (error) {
+        console.error(error);
+        toast({ 
+          title: "Error", 
+          description: "No se pudieron cargar los datos", 
+          variant: "destructive" 
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [refreshKey, selectedWarehouseId]);
+
+  const filteredInventory = products.filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          item.sku.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesWarehouse = selectedWarehouse === "all" || 
-                           item.warehouse === selectedWarehouse;
     
     let matchesStock = true;
     if (stockFilter === "low") {
-      matchesStock = item.currentStock <= item.minStock;
+      matchesStock = item.stock <= 15;
     } else if (stockFilter === "normal") {
-      matchesStock = item.currentStock > item.minStock && item.currentStock < item.maxStock * 0.8;
+      matchesStock = item.stock > 15 && item.stock <= 50;
     } else if (stockFilter === "high") {
-      matchesStock = item.currentStock >= item.maxStock * 0.8;
+      matchesStock = item.stock > 50;
+    } else if (stockFilter === "out") {
+      matchesStock = item.stock === 0;
     }
     
-    return matchesSearch && matchesWarehouse && matchesStock;
+    return matchesSearch && matchesStock;
   });
 
-  const getStockStatus = (current: number, min: number, max: number) => {
-    const percentage = (current / max) * 100;
-    
-    if (current <= min) {
+  const getStockStatus = (stock: number) => {
+    if (stock === 0) {
       return { 
-        status: "Crítico", 
-        color: "destructive", 
-        percentage,
-        bgColor: "bg-destructive"
+        status: "Sin stock", 
+        color: "destructive",
+        textColor: "text-red-600",
+        bgColor: "bg-red-500"
       };
-    } else if (current <= min * 1.5) {
+    } else if (stock <= 15) {
       return { 
         status: "Bajo", 
-        color: "warning", 
-        percentage,
-        bgColor: "bg-warning"
+        color: "warning",
+        textColor: "text-orange-600",
+        bgColor: "bg-orange-500"
       };
-    } else if (current >= max * 0.8) {
+    } else if (stock <= 50) {
       return { 
-        status: "Alto", 
-        color: "success", 
-        percentage,
-        bgColor: "bg-success"
+        status: "Normal", 
+        color: "secondary",
+        textColor: "text-blue-600",
+        bgColor: "bg-blue-500"
       };
     } else {
       return { 
-        status: "Normal", 
-        color: "secondary", 
-        percentage,
-        bgColor: "bg-primary"
+        status: "Alto", 
+        color: "success",
+        textColor: "text-green-600",
+        bgColor: "bg-green-500"
       };
     }
   };
 
   const getLowStockCount = () => {
-    return inventory.filter(item => item.currentStock <= item.minStock).length;
+    return products.filter(item => item.stock <= 15).length;
   };
 
-  const getTotalValue = () => {
-    return filteredInventory.reduce((total, item) => 
-      total + (item.currentStock * item.price), 0
-    ).toFixed(2);
+  const getOutOfStockCount = () => {
+    return products.filter(item => item.stock === 0).length;
   };
 
   const handleAdjustStock = (item: InventoryItem) => {
@@ -166,59 +160,19 @@ export default function Inventory() {
     setIsAdjustModalOpen(true);
   };
 
-  const handleViewHistory = (productId: string, productName: string) => {
-    toast({
-      title: "Historial de movimientos",
-      description: `Mostrando historial de ${productName}`,
-    });
-  };
-
-  const handleExport = () => {
-    toast({
-      title: "Exportando inventario",
-      description: "El archivo se descargará en breve",
-    });
-  };
-
-  const handleMoreFilters = () => {
-    toast({
-      title: "Más filtros",
-      description: "Panel de filtros avanzados en desarrollo",
-    });
-  };
-
-  const handleClearFilters = () => {
-    setSearchTerm("");
-    setSelectedWarehouse("all");
-    setStockFilter("all");
-    toast({
-      title: "Filtros limpiados",
-      description: "Se han restablecido todos los filtros",
-    });
-  };
-
   const handleStockAdjusted = () => {
     setRefreshKey(prev => prev + 1);
-    // Aquí se podría recargar la lista de inventario desde la API
   };
 
   return (
     <Layout>
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground">Control de Inventario</h1>
-            <p className="text-muted-foreground">
-              Monitorea los niveles de stock por depósito
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="outline" className="gap-2" onClick={handleExport}>
-              <Download className="h-4 w-4" />
-              Exportar
-            </Button>
-          </div>
+        <div>
+          <h1 className="text-3xl font-bold text-foreground">Control de Inventario</h1>
+          <p className="text-muted-foreground">
+            Monitorea los niveles de stock por depósito
+          </p>
         </div>
 
         {/* Summary Cards */}
@@ -228,7 +182,7 @@ export default function Inventory() {
               <div className="flex items-center gap-2">
                 <Package className="h-5 w-5 text-primary" />
                 <div>
-                  <p className="text-2xl font-bold">{filteredInventory.length}</p>
+                  <p className="text-2xl font-bold">{products.length}</p>
                   <p className="text-sm text-muted-foreground">Productos Total</p>
                 </div>
               </div>
@@ -250,10 +204,10 @@ export default function Inventory() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2">
-                <Warehouse className="h-5 w-5 text-muted-foreground" />
+                <Package className="h-5 w-5 text-red-500" />
                 <div>
-                  <p className="text-2xl font-bold">3</p>
-                  <p className="text-sm text-muted-foreground">Depósitos</p>
+                  <p className="text-2xl font-bold">{getOutOfStockCount()}</p>
+                  <p className="text-sm text-muted-foreground">Sin Stock</p>
                 </div>
               </div>
             </CardContent>
@@ -262,10 +216,10 @@ export default function Inventory() {
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-success" />
+                <Warehouse className="h-5 w-5 text-muted-foreground" />
                 <div>
-                  <p className="text-2xl font-bold">${getTotalValue()}</p>
-                  <p className="text-sm text-muted-foreground">Valor Total</p>
+                  <p className="text-2xl font-bold">{warehouses.length}</p>
+                  <p className="text-sm text-muted-foreground">Depósitos</p>
                 </div>
               </div>
             </CardContent>
@@ -290,13 +244,13 @@ export default function Inventory() {
               
               <div className="flex gap-2 flex-wrap">
                 <select
-                  value={selectedWarehouse}
-                  onChange={(e) => setSelectedWarehouse(e.target.value)}
+                  value={selectedWarehouseId}
+                  onChange={(e) => setSelectedWarehouseId(e.target.value)}
                   className="px-3 py-2 border border-input bg-background rounded-md text-foreground"
                 >
                   <option value="all">Todos los depósitos</option>
-                  {warehouses.slice(1).map(warehouse => (
-                    <option key={warehouse} value={warehouse}>{warehouse}</option>
+                  {warehouses.map(warehouse => (
+                    <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
                   ))}
                 </select>
 
@@ -306,103 +260,95 @@ export default function Inventory() {
                   className="px-3 py-2 border border-input bg-background rounded-md text-foreground"
                 >
                   <option value="all">Todos los niveles</option>
-                  <option value="low">Stock bajo</option>
-                  <option value="normal">Stock normal</option>
-                  <option value="high">Stock alto</option>
+                  <option value="out">Sin stock</option>
+                  <option value="low">Stock bajo (≤15)</option>
+                  <option value="normal">Stock normal (16-50)</option>
+                  <option value="high">Stock alto (&gt;50)</option>
                 </select>
-
-                <Button variant="outline" className="gap-2" onClick={handleMoreFilters}>
-                  <Filter className="h-4 w-4" />
-                  Filtros
-                </Button>
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Inventory List */}
-        <div className="space-y-4">
-          {filteredInventory.map((item) => {
-            const stockInfo = getStockStatus(item.currentStock, item.minStock, item.maxStock);
-            
-            return (
-              <Card key={item.id}>
-                <CardContent className="pt-6">
-                  <div className="space-y-4">
-                    {/* Header */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="flex-1">
-                        <h3 className="font-semibold text-foreground text-lg">
-                          {item.name}
-                        </h3>
-                        <p className="text-muted-foreground">
-                          SKU: {item.sku} • {item.category} • {item.warehouse}
-                        </p>
-                      </div>
-                      
-                      <div className="flex items-center gap-4">
-                        <Badge variant={stockInfo.color as any}>
-                          {stockInfo.status}
-                        </Badge>
-                        <div className="text-right">
-                          <p className="text-2xl font-bold">
-                            {item.currentStock}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            de {item.maxStock}
+        {isLoading ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-muted-foreground">Cargando inventario...</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {filteredInventory.map((item) => {
+              const stockInfo = getStockStatus(item.stock);
+              const stockPercentage = Math.min((item.stock / 100) * 100, 100);
+              
+              return (
+                <Card key={item.id}>
+                  <CardContent className="pt-6">
+                    <div className="space-y-4">
+                      {/* Header */}
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-foreground text-lg">
+                            {item.name}
+                          </h3>
+                          <p className="text-muted-foreground text-sm">
+                            SKU: {item.sku} • {item.category_name}
                           </p>
                         </div>
-                      </div>
-                    </div>
-
-                    {/* Stock Progress Bar */}
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">
-                          Mínimo: {item.minStock}
-                        </span>
-                        <span className="text-muted-foreground">
-                          Máximo: {item.maxStock}
-                        </span>
-                      </div>
-                      <Progress 
-                        value={stockInfo.percentage} 
-                        className="h-2"
-                      />
-                    </div>
-
-                    {/* Details */}
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pt-2 border-t">
-                      <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                        <span>Precio: ${item.price}</span>
-                        <span>Valor: ${(item.currentStock * item.price).toFixed(2)}</span>
-                        <div className="flex items-center gap-1">
-                          {item.movementType === "entrada" ? (
-                            <TrendingUp className="h-4 w-4 text-success" />
-                          ) : (
-                            <TrendingDown className="h-4 w-4 text-destructive" />
-                          )}
-                          <span>Último: {item.lastMovement}</span>
+                        
+                        <div className="flex items-center gap-4">
+                          <Badge variant={stockInfo.color as any}>
+                            {stockInfo.status}
+                          </Badge>
+                          <div className="text-right">
+                            <p className={`text-3xl font-bold ${stockInfo.textColor}`}>
+                              {item.stock}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              unidades
+                            </p>
+                          </div>
                         </div>
                       </div>
-                      
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleAdjustStock(item)}>
+
+                      {/* Stock Progress Bar */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>Nivel de stock</span>
+                          <span>{item.stock} unidades</span>
+                        </div>
+                        <div className="w-full bg-slate-200 rounded-full h-2.5">
+                          <div 
+                            className={`${stockInfo.bgColor} h-2.5 rounded-full transition-all`}
+                            style={{ width: `${stockPercentage}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex justify-between items-center pt-2 border-t">
+                        <div className="text-sm text-muted-foreground">
+                          Precio unitario: <span className="font-semibold">${item.price.toFixed(2)}</span>
+                        </div>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => handleAdjustStock(item)}
+                        >
                           Ajustar Stock
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => handleViewHistory(item.id, item.name)}>
-                          Ver Historial
-                        </Button>
                       </div>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
-        {filteredInventory.length === 0 && (
+        {!isLoading && filteredInventory.length === 0 && (
           <Card>
             <CardContent className="py-12">
               <div className="text-center">
@@ -410,26 +356,23 @@ export default function Inventory() {
                 <h3 className="text-lg font-semibold mb-2">
                   No se encontraron productos
                 </h3>
-                <p className="text-muted-foreground mb-4">
+                <p className="text-muted-foreground">
                   Intenta ajustar los criterios de búsqueda
                 </p>
-                <Button variant="outline" onClick={handleClearFilters}>
-                  Limpiar filtros
-                </Button>
               </div>
             </CardContent>
           </Card>
         )}
       </div>
 
-      {/* Modals */}
+      {/* Modal de ajuste de stock */}
       {selectedProduct && (
         <AdjustStockModal
           isOpen={isAdjustModalOpen}
           onClose={() => setIsAdjustModalOpen(false)}
           productId={selectedProduct.id}
           productName={selectedProduct.name}
-          currentStock={selectedProduct.currentStock}
+          currentStock={selectedProduct.stock}
           onStockAdjusted={handleStockAdjusted}
         />
       )}
