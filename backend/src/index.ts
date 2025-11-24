@@ -10,6 +10,7 @@ import clientsRoutes from './routes/clientsRoutes';
 import categoryRoutes from './routes/categoryRoutes';
 import recognitionRoutes from './routes/recognitionRoutes';
 import authRoutes from './routes/authRoutes';
+import marketingRoutes from './routes/marketingRoutes';
 
 // Cargar variables de entorno
 dotenv.config();
@@ -35,6 +36,7 @@ app.use('/api/clients', clientsRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/recognize', recognitionRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/marketing', marketingRoutes);
 
 // Ruta de prueba
 app.get('/', (req: Request, res: Response) => {

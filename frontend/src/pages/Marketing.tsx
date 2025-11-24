@@ -4,23 +4,29 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Search, MessageCircle, Mail, Megaphone, User } from "lucide-react";
+import { Mail, Megaphone, User, Loader2, Send, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 interface Client {
   id: number;
   name: string;
   surname?: string;
   dni: string;
-  phone?: string;
-  email?: string;
+  email?: string; 
 }
 
 export default function Marketing() {
   const [clients, setClients] = useState<Client[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+
+  // Estados para CAMPAÑA MASIVA
+  const [isCampaignOpen, setIsCampaignOpen] = useState(false);
+  const [campaignSubject, setCampaignSubject] = useState("");
+  const [campaignMessage, setCampaignMessage] = useState("");
+  const [isCampaignSending, setIsCampaignSending] = useState(false);
+  
   const { toast } = useToast();
 
   useEffect(() => {
@@ -31,27 +37,55 @@ export default function Marketing() {
       .finally(() => setIsLoading(false));
   }, []);
 
-  const filteredClients = clients.filter(client => 
-    client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (client.surname && client.surname.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    client.dni.includes(searchTerm)
-  );
+  // Clientes válidos para la campaña (TODOS los que tengan email)
+  const validRecipients = clients.filter(c => c.email && c.email.includes('@'));
 
-  const handleSendWhatsApp = (phone: string | undefined, name: string) => {
-    if (!phone) {
-      toast({ title: "Sin teléfono", description: "Este cliente no tiene número registrado.", variant: "destructive" });
-      return;
+  // --- ENVÍO MASIVO ---
+  const handleSendCampaign = async () => {
+    if (validRecipients.length === 0) {
+        toast({ title: "Sin destinatarios", description: "No hay clientes con email en la base de datos.", variant: "destructive" });
+        return;
+    }
+    if (!campaignSubject || !campaignMessage) {
+        toast({ title: "Faltan datos", description: "Completá el asunto y el mensaje.", variant: "destructive" });
+        return;
     }
 
-    // Mensaje promocional pre-armado
-    const message = `Hola ${name}! 👋 En SCANIX tenemos nuevas ofertas pensadas para vos. Pasá por nuestra sucursal y aprovechá los descuentos en bebidas y snacks. ¡Te esperamos!`;
+    setIsCampaignSending(true);
     
-    // Abrir API de WhatsApp
-    // Eliminamos caracteres no numéricos del teléfono por si acaso
-    const cleanPhone = phone.replace(/\D/g, '');
-    const url = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
-    
-    window.open(url, '_blank');
+    const recipientsList = validRecipients.map(c => ({ 
+        email: c.email, 
+        name: c.name 
+    }));
+
+    try {
+        const response = await fetch('http://localhost:5000/api/marketing/send-campaign', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                recipients: recipientsList,
+                subject: campaignSubject,
+                message: campaignMessage
+            })
+        });
+
+        if (!response.ok) throw new Error();
+
+        toast({
+            title: "¡Campaña enviada!",
+            description: `Se envió el correo a ${recipientsList.length} clientes exitosamente.`,
+        });
+        
+        // Limpiar y cerrar
+        setCampaignSubject("");
+        setCampaignMessage("");
+        setIsCampaignOpen(false);
+
+    } catch (error) {
+        toast({ title: "Error", description: "Hubo un problema al enviar la campaña.", variant: "destructive" });
+    } finally {
+        setIsCampaignSending(false);
+    }
   };
 
   return (
@@ -59,32 +93,25 @@ export default function Marketing() {
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Marketing y Ofertas</h1>
-            <p className="text-muted-foreground">Gestiona tus clientes y envía promociones</p>
+            <h1 className="text-3xl font-bold text-foreground">Marketing</h1>
+            <p className="text-muted-foreground">Gestioná tus clientes y envía promociones masivas</p>
           </div>
-          <Button className="gap-2">
+          
+          <Button 
+            className="gap-2 bg-primary hover:bg-primary/90"
+            onClick={() => setIsCampaignOpen(true)}
+          >
             <Megaphone className="h-4 w-4" />
-            Crear Campaña Masiva
+            Crear campaña masiva
           </Button>
         </div>
 
         <Card>
           <CardHeader>
-            <CardTitle>Cartera de Clientes</CardTitle>
+            <CardTitle>Audiencia Total</CardTitle>
             <CardDescription>
-              Total: {clients.length} clientes registrados
+              {clients.length} clientes registrados
             </CardDescription>
-            <div className="pt-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  placeholder="Buscar por nombre o DNI..." 
-                  className="pl-10 max-w-sm"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
           </CardHeader>
           <CardContent>
             <div className="rounded-md border">
@@ -93,25 +120,28 @@ export default function Marketing() {
                   <TableRow>
                     <TableHead>Cliente</TableHead>
                     <TableHead>DNI</TableHead>
-                    <TableHead>Contacto</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
+                    <TableHead>Email</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {isLoading ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-8">Cargando clientes...</TableCell>
+                      <TableCell colSpan={3} className="text-center py-8">
+                        <div className="flex justify-center items-center gap-2 text-muted-foreground">
+                            <Loader2 className="h-4 w-4 animate-spin" /> Cargando clientes...
+                        </div>
+                      </TableCell>
                     </TableRow>
-                  ) : filteredClients.length === 0 ? (
+                  ) : clients.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No se encontraron clientes.</TableCell>
+                      <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No se encontraron clientes.</TableCell>
                     </TableRow>
                   ) : (
-                    filteredClients.map((client) => (
+                    clients.map((client) => (
                       <TableRow key={client.id}>
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center text-primary">
+                            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-700">
                               <User className="h-4 w-4" />
                             </div>
                             {client.name} {client.surname}
@@ -119,21 +149,13 @@ export default function Marketing() {
                         </TableCell>
                         <TableCell>{client.dni}</TableCell>
                         <TableCell>
-                          <div className="flex flex-col gap-1 text-xs">
-                            {client.phone ? <span className="flex items-center gap-1"><MessageCircle className="h-3 w-3"/> {client.phone}</span> : <span className="text-muted-foreground italic">Sin teléfono</span>}
-                            {client.email ? <span className="flex items-center gap-1"><Mail className="h-3 w-3"/> {client.email}</span> : null}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button 
-                            size="sm" 
-                            variant="outline" 
-                            className="text-green-600 hover:text-green-700 hover:bg-green-50 border-green-200"
-                            onClick={() => handleSendWhatsApp(client.phone, client.name)}
-                          >
-                            <MessageCircle className="h-4 w-4 mr-2" />
-                            Enviar Oferta
-                          </Button>
+                          {client.email ? (
+                            <div className="flex items-center gap-2 text-sm text-slate-600">
+                                <Mail className="h-3 w-3" /> {client.email}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">No registrado</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     ))
@@ -143,6 +165,66 @@ export default function Marketing() {
             </div>
           </CardContent>
         </Card>
+
+        {/* --- MODAL DE CAMPAÑA MASIVA --- */}
+        <Dialog open={isCampaignOpen} onOpenChange={setIsCampaignOpen}>
+            <DialogContent className="max-w-lg">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Megaphone className="h-5 w-5 text-primary" /> 
+                        Nueva campaña masiva
+                    </DialogTitle>
+                </DialogHeader>
+                
+                <div className="space-y-4 py-4">
+                    {/* Aviso de destinatarios */}
+                    <div className="bg-slate-50 p-3 rounded-md border flex items-center gap-3 text-sm text-slate-600">
+                        <Users className="h-5 w-5 text-slate-400" />
+                        <div>
+                            Se enviará a: <span className="font-bold text-slate-900">{validRecipients.length} personas</span>.
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <Label htmlFor="subject">Asunto del correo</Label>
+                        <Input 
+                            id="subject" 
+                            placeholder="Ejemplo: ¡Descuentos imperdibles este finde!" 
+                            value={campaignSubject}
+                            onChange={(e) => setCampaignSubject(e.target.value)}
+                        />
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <Label htmlFor="message">Mensaje</Label>
+                        <textarea 
+                            id="message" 
+                            className="flex min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                            placeholder="Escribí acá el cuerpo del correo..."
+                            value={campaignMessage}
+                            onChange={(e) => setCampaignMessage(e.target.value)}
+                        />
+                    </div>
+                </div>
+
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsCampaignOpen(false)} disabled={isCampaignSending}>
+                        Cancelar
+                    </Button>
+                    <Button onClick={handleSendCampaign} disabled={isCampaignSending || validRecipients.length === 0} className="gap-2">
+                        {isCampaignSending ? (
+                            <>
+                                <Loader2 className="h-4 w-4 animate-spin" /> Enviando...
+                            </>
+                        ) : (
+                            <>
+                                <Send className="h-4 w-4" /> Enviar
+                            </>
+                        )}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );

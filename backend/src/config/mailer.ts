@@ -21,7 +21,7 @@ export const sendEmail = async (to: string, subject: string, html: string) => {
     const transporter = await createTransporter();
 
     const info = await transporter.sendMail({
-      from: '"SCANIX Ventas" <no-reply@scanix.com>',
+      from: '"SCANIX" <no-reply@scanix.com>',
       to,
       subject,
       html,

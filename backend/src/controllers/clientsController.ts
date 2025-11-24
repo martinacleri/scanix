@@ -23,3 +23,21 @@ export const getAllClients = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Error al obtener los clientes.' });
     }
 };
+
+export const deleteClient = async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    try {
+        // Knex devuelve la cantidad de filas afectadas
+        const deletedRows = await knex('clients').where({ id }).del();
+
+        if (deletedRows === 0) {
+            return res.status(404).json({ message: 'Cliente no encontrado o ya eliminado.' });
+        }
+
+        res.status(200).json({ message: 'Cliente eliminado correctamente.' });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: 'Error al eliminar el cliente.' });
+    }
+};
