@@ -1,295 +1,176 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Layout from "@/components/Layout";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { 
   BarChart3, 
-  Download, 
   DollarSign, 
   Package, 
   TrendingUp, 
   Users,
-  Calendar,
-  Filter
+  Loader2
 } from "lucide-react";
-
-// Mock data for reports
-const mockSalesData = [
-  { month: "Enero", sales: 150000, orders: 45, products: 320 },
-  { month: "Febrero", sales: 180000, orders: 52, products: 387 },
-  { month: "Marzo", sales: 220000, orders: 68, products: 445 },
-];
-
-const mockTopProducts = [
-  { name: "Producto A", sales: 85000, quantity: 150, growth: "+15%" },
-  { name: "Producto B", sales: 72000, quantity: 120, growth: "+8%" },
-  { name: "Producto C", sales: 68000, quantity: 95, growth: "-3%" },
-  { name: "Producto D", sales: 55000, quantity: 87, growth: "+22%" },
-];
-
-const mockWarehouses = [
-  { id: 1, name: "Depósito Central", sales: 180000, orders: 65 },
-  { id: 2, name: "Depósito Norte", sales: 120000, orders: 38 },
-  { id: 3, name: "Depósito Sur", sales: 95000, orders: 22 },
-];
+import { useToast } from "@/hooks/use-toast";
 
 export default function Reports() {
-  const [selectedPeriod, setSelectedPeriod] = useState("month");
-  const [selectedWarehouse, setSelectedWarehouse] = useState("all");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
-  const totalSales = mockSalesData.reduce((sum, item) => sum + item.sales, 0);
-  const totalOrders = mockSalesData.reduce((sum, item) => sum + item.orders, 0);
-  const totalProducts = mockSalesData.reduce((sum, item) => sum + item.products, 0);
+  useEffect(() => {
+    fetch('http://localhost:5000/api/reports/dashboard')
+      .then(res => res.json())
+      .then(data => setStats(data))
+      .catch(err => {
+        console.error(err);
+        toast({ 
+            title: "Error", 
+            description: "No se pudieron cargar los reportes", 
+            variant: "destructive" 
+        });
+      })
+      .finally(() => setLoading(false));
+  }, []);
 
-  const exportReport = () => {
-    // Mock export functionality
-    console.log("Exporting report...");
-  };
+  if (loading) {
+    return (
+        <Layout>
+            <div className="flex h-[80vh] items-center justify-center">
+                <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            </div>
+        </Layout>
+    )
+  }
+
+  // Si falla la carga o no hay datos, mostramos 0 para no romper la UI
+  const safeStats = stats || { totalSales: 0, totalOrders: 0, totalProducts: 0, topProducts: [], byWarehouse: [] };
+  
+  const ticketPromedio = safeStats.totalOrders > 0 
+    ? Math.round(safeStats.totalSales / safeStats.totalOrders) 
+    : 0;
 
   return (
     <Layout>
-      <div className="space-y-6">
-        <div className="flex justify-between items-start">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground mb-2">
-              Panel de Reportes y Ventas
+      <div className="space-y-6 animate-in fade-in duration-500">
+        <div>
+            <h1 className="text-3xl font-bold text-foreground">
+              Panel de reportes
             </h1>
             <p className="text-muted-foreground">
-              Resumen de ventas filtrado por depósito y período
+              Resumen general de rendimiento comercial
             </p>
-          </div>
-          <Button onClick={exportReport} className="flex items-center gap-2">
-            <Download className="h-4 w-4" />
-            Exportar Reporte
-          </Button>
         </div>
-
-        {/* Filters */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Filter className="h-5 w-5" />
-              Filtros de Reporte
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <Label htmlFor="period">Período</Label>
-                <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="day">Diario</SelectItem>
-                    <SelectItem value="week">Semanal</SelectItem>
-                    <SelectItem value="month">Mensual</SelectItem>
-                    <SelectItem value="year">Anual</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="warehouse">Depósito</Label>
-                <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos los Depósitos</SelectItem>
-                    {mockWarehouses.map((warehouse) => (
-                      <SelectItem key={warehouse.id} value={warehouse.id.toString()}>
-                        {warehouse.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="start-date">Fecha Inicio</Label>
-                <Input
-                  id="start-date"
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label htmlFor="end-date">Fecha Fin</Label>
-                <Input
-                  id="end-date"
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Ventas Totales
-              </CardTitle>
+              <CardTitle className="text-sm font-medium">Ventas totales</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                ${totalSales.toLocaleString()}
+              <div className="text-2xl font-bold text-green-600">
+                ${Number(safeStats.totalSales).toLocaleString()}
               </div>
-              <p className="text-xs text-muted-foreground">
-                <Badge variant="default" className="text-xs">
-                  +12.5% vs período anterior
-                </Badge>
-              </p>
+              <p className="text-xs text-muted-foreground mt-1">Ingresos históricos</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Órdenes Totales
-              </CardTitle>
+              <CardTitle className="text-sm font-medium">Órdenes</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {totalOrders}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                <Badge variant="secondary" className="text-xs">
-                  +8.2% vs período anterior
-                </Badge>
-              </p>
+              <div className="text-2xl font-bold">{safeStats.totalOrders}</div>
+              <p className="text-xs text-muted-foreground mt-1">Tickets generados</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Productos Vendidos
-              </CardTitle>
+              <CardTitle className="text-sm font-medium">Productos</CardTitle>
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                {totalProducts}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                <Badge variant="default" className="text-xs">
-                  +15.3% vs período anterior
-                </Badge>
-              </p>
+              <div className="text-2xl font-bold">{safeStats.totalProducts}</div>
+              <p className="text-xs text-muted-foreground mt-1">Unidades vendidas</p>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">
-                Ticket Promedio
-              </CardTitle>
+              <CardTitle className="text-sm font-medium">Ticket promedio</CardTitle>
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${Math.round(totalSales / totalOrders).toLocaleString()}
+                ${ticketPromedio.toLocaleString()}
               </div>
-              <p className="text-xs text-muted-foreground">
-                <Badge variant="default" className="text-xs">
-                  +4.1% vs período anterior
-                </Badge>
-              </p>
+              <p className="text-xs text-muted-foreground mt-1">Promedio por venta</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Top Products */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Productos Más Vendidos
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {mockTopProducts.map((product, index) => (
-                <div
-                  key={product.name}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
-                      <span className="text-sm font-bold text-primary">
-                        #{index + 1}
-                      </span>
-                    </div>
-                    <div>
-                      <h4 className="font-medium">{product.name}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {product.quantity} unidades vendidas
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-semibold">
-                      ${product.sales.toLocaleString()}
-                    </div>
-                    <Badge 
-                      variant={product.growth.startsWith('+') ? 'default' : 'destructive'}
-                      className="text-xs"
-                    >
-                      {product.growth}
-                    </Badge>
-                  </div>
+        {/* Top Products & Warehouses */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* TOP PRODUCTOS */}
+            <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Ranking de productos
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-4">
+                {safeStats.topProducts.length > 0 ? (
+                    safeStats.topProducts.map((product: any, index: number) => (
+                        <div key={index} className="flex items-center justify-between p-3 border rounded-lg bg-slate-50/50">
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-primary/10 rounded-full flex items-center justify-center">
+                            <span className="text-sm font-bold text-primary">#{index + 1}</span>
+                            </div>
+                            <div>
+                            <h4 className="font-medium text-sm">{product.name}</h4>
+                            <p className="text-xs text-muted-foreground">{product.quantity} unidades vendidas</p>
+                            </div>
+                        </div>
+                        </div>
+                    ))
+                ) : (
+                    <p className="text-center text-muted-foreground text-sm py-4">No hay datos de ventas aún.</p>
+                )}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+            </Card>
 
-        {/* Sales by Warehouse */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Ventas por Depósito
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {mockWarehouses.map((warehouse) => (
-                <div
-                  key={warehouse.id}
-                  className="flex items-center justify-between p-3 border rounded-lg"
-                >
-                  <div>
-                    <h4 className="font-medium">{warehouse.name}</h4>
-                    <p className="text-sm text-muted-foreground">
-                      {warehouse.orders} órdenes completadas
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-semibold">
-                      ${warehouse.sales.toLocaleString()}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      ${Math.round(warehouse.sales / warehouse.orders).toLocaleString()} por orden
-                    </div>
-                  </div>
+            {/* VENTAS POR DEPÓSITO */}
+            <Card>
+            <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Rendimiento por depósito
+                </CardTitle>
+            </CardHeader>
+            <CardContent>
+                <div className="space-y-4">
+                {safeStats.byWarehouse.length > 0 ? (
+                    safeStats.byWarehouse.map((warehouse: any) => (
+                        <div key={warehouse.id} className="flex items-center justify-between p-3 border rounded-lg">
+                        <div>
+                            <h4 className="font-medium">{warehouse.name}</h4>
+                            <p className="text-sm text-muted-foreground">{warehouse.orders} órdenes</p>
+                        </div>
+                        </div>
+                    ))
+                ) : (
+                    <p className="text-center text-muted-foreground text-sm py-4">No hay datos de depósitos aún.</p>
+                )}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+            </Card>
+        </div>
       </div>
     </Layout>
   );
