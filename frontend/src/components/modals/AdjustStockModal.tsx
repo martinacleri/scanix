@@ -19,6 +19,7 @@ interface AdjustStockModalProps {
   productId: string;
   productName: string;
   currentStock: number;
+  warehouseId: string | number;
   onStockAdjusted: () => void;
 }
 
@@ -28,31 +29,12 @@ export default function AdjustStockModal({
   productId, 
   productName, 
   currentStock,
+  warehouseId,   
   onStockAdjusted 
 }: AdjustStockModalProps) {
   const { toast } = useToast();
   const [adjustmentType, setAdjustmentType] = useState<"entrada" | "salida">("entrada");
   const [quantity, setQuantity] = useState("");
-  const [reason, setReason] = useState("");
-  const [notes, setNotes] = useState("");
-
-  const reasons = {
-    entrada: [
-      "Compra nueva",
-      "Devolución cliente",
-      "Transferencia entre depósitos",
-      "Ajuste de inventario",
-      "Producción interna"
-    ],
-    salida: [
-      "Venta",
-      "Producto dañado",
-      "Producto vencido",
-      "Transferencia entre depósitos",
-      "Ajuste de inventario",
-      "Muestra gratuita"
-    ]
-  };
 
   const calculateNewStock = () => {
     const qty = parseInt(quantity) || 0;
@@ -63,59 +45,62 @@ export default function AdjustStockModal({
     }
   };
 
-  const handleSubmit = () => {
-    const qty = parseInt(quantity);
-    
-    if (!qty || qty <= 0) {
-      toast({
-        title: "Cantidad inválida",
-        description: "Ingresa una cantidad válida mayor a 0",
-        variant: "destructive"
-      });
-      return;
-    }
+const handleSubmit = async () => {
+  const qty = parseInt(quantity);
 
-    if (!reason) {
-      toast({
-        title: "Motivo requerido",
-        description: "Selecciona un motivo para el ajuste",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    if (adjustmentType === "salida" && qty > currentStock) {
-      toast({
-        title: "Stock insuficiente",
-        description: "No puedes retirar más stock del disponible",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    // Simular actualización del stock
-    console.log("Ajustando stock:", {
-      productId,
-      type: adjustmentType,
-      quantity: qty,
-      reason,
-      notes,
-      newStock: calculateNewStock()
+  if (!qty || qty <= 0) {
+    toast({
+      title: "Cantidad inválida",
+      description: "Ingresa una cantidad válida mayor a 0",
+      variant: "destructive"
     });
+    return;
+  }
+
+  const changeQuantity = adjustmentType === "entrada" ? qty : -qty;
+
+  try {
+    const response = await fetch("http://localhost:5000/api/stock/adjust", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        productId,
+        warehouseId,
+        changeQuantity
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      toast({
+        title: "Error",
+        description: data.error || "No se pudo actualizar el stock",
+        variant: "destructive"
+      });
+      return;
+    }
 
     toast({
       title: "Stock actualizado",
-      description: `Se ${adjustmentType === "entrada" ? "agregaron" : "retiraron"} ${qty} unidades`,
+      description: data.message
     });
 
     onStockAdjusted();
     handleClose();
-  };
+
+  } catch (error) {
+    toast({
+      title: "Error",
+      description: "Error al conectar con el servidor",
+      variant: "destructive"
+    });
+  }
+};
+
 
   const handleClose = () => {
     setQuantity("");
-    setReason("");
-    setNotes("");
     setAdjustmentType("entrada");
     onClose();
   };
@@ -126,24 +111,24 @@ export default function AdjustStockModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Ajustar Stock
+            Ajustar stock
           </DialogTitle>
           <DialogDescription>
-            Modifica el inventario de {productName}
+            Modificá el inventario de {productName}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
           {/* Current Stock */}
           <div className="p-3 bg-muted/30 rounded-lg text-center">
-            <p className="text-sm text-muted-foreground">Stock Actual</p>
+            <p className="text-sm text-muted-foreground">Stock actual</p>
             <p className="text-2xl font-bold">{currentStock}</p>
             <p className="text-xs text-muted-foreground">unidades</p>
           </div>
 
           {/* Adjustment Type */}
           <div className="space-y-3">
-            <Label>Tipo de Movimiento</Label>
+            <Label>Tipo de movimiento</Label>
             <div className="grid grid-cols-2 gap-2">
               <Button
                 variant={adjustmentType === "entrada" ? "default" : "outline"}
@@ -177,36 +162,6 @@ export default function AdjustStockModal({
             />
           </div>
 
-          {/* Reason */}
-          <div className="space-y-2">
-            <Label htmlFor="reason">Motivo</Label>
-            <select
-              id="reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              className="w-full px-3 py-2 border border-input bg-background rounded-md text-foreground"
-            >
-              <option value="">Seleccionar motivo</option>
-              {reasons[adjustmentType].map(reasonOption => (
-                <option key={reasonOption} value={reasonOption}>
-                  {reasonOption}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Notes */}
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notas (opcional)</Label>
-            <Textarea
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Información adicional..."
-              rows={2}
-            />
-          </div>
-
           {/* Preview */}
           {quantity && (
             <div className="p-3 border rounded-lg">
@@ -228,7 +183,7 @@ export default function AdjustStockModal({
               Cancelar
             </Button>
             <Button onClick={handleSubmit} className="flex-1">
-              Confirmar Ajuste
+              Confirmar
             </Button>
           </div>
         </div>

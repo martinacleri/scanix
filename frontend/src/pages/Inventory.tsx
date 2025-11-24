@@ -22,7 +22,6 @@ interface InventoryItem extends ProductUI {
 
 export default function Inventory() {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState("all");
   const [stockFilter, setStockFilter] = useState("all");
   const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
   const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
@@ -47,27 +46,22 @@ export default function Inventory() {
     }
   };
 
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState(() => {
+  return getUserWarehouseId() || "all";
+  });
+
   useEffect(() => {
     const fetchData = async () => {
       setIsLoading(true);
       
       try {
         // Determinamos qué depósito cargar
-        const warehouseIdToFetch = selectedWarehouseId === "all" 
-          ? getUserWarehouseId() 
-          : selectedWarehouseId;
-
-        if (!warehouseIdToFetch) {
-          toast({ 
-            title: "Error", 
-            description: "No se pudo obtener el depósito del usuario", 
-            variant: "destructive" 
-          });
-          return;
-        }
-
         const [productsResponse, warehousesResponse] = await Promise.all([
-          fetch(`http://localhost:5000/api/products/details?warehouseId=${warehouseIdToFetch}`),
+          fetch(
+            selectedWarehouseId === "all" 
+              ? `http://localhost:5000/api/stock/total`
+              : `http://localhost:5000/api/products/details?warehouseId=${selectedWarehouseId}`
+          ),
           fetch('http://localhost:5000/api/warehouses')
         ]);
         
@@ -76,6 +70,7 @@ export default function Inventory() {
         }
         
         const productsData: ProductFromAPI[] = await productsResponse.json();
+        console.log('Datos de la API:', productsData);
         const warehousesData = await warehousesResponse.json();
 
         const formattedProducts = productsData.map(mapProductFromApiToUI);
@@ -103,7 +98,7 @@ export default function Inventory() {
     
     let matchesStock = true;
     if (stockFilter === "low") {
-      matchesStock = item.stock <= 15;
+      matchesStock = item.stock > 0 && item.stock <= 15;
     } else if (stockFilter === "normal") {
       matchesStock = item.stock > 15 && item.stock <= 50;
     } else if (stockFilter === "high") {
@@ -123,14 +118,14 @@ export default function Inventory() {
         textColor: "text-red-600",
         bgColor: "bg-red-500"
       };
-    } else if (stock <= 15) {
+    } else if (stock > 0 && stock <= 15) {
       return { 
         status: "Bajo", 
         color: "warning",
-        textColor: "text-orange-600",
+        textColor: "text-orange-500",
         bgColor: "bg-orange-500"
       };
-    } else if (stock <= 50) {
+    } else if (stock > 15 && stock <= 50) {
       return { 
         status: "Normal", 
         color: "secondary",
@@ -148,7 +143,7 @@ export default function Inventory() {
   };
 
   const getLowStockCount = () => {
-    return products.filter(item => item.stock <= 15).length;
+    return products.filter(item => item.stock > 0 && item.stock <= 15).length;
   };
 
   const getOutOfStockCount = () => {
@@ -169,21 +164,21 @@ export default function Inventory() {
       <div className="space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Control de Inventario</h1>
+          <h1 className="text-3xl font-bold text-foreground">Control de inventario</h1>
           <p className="text-muted-foreground">
-            Monitorea los niveles de stock por depósito
+            Monitoreá los niveles de stock por depósito
           </p>
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-2">
                 <Package className="h-5 w-5 text-primary" />
                 <div>
                   <p className="text-2xl font-bold">{products.length}</p>
-                  <p className="text-sm text-muted-foreground">Productos Total</p>
+                  <p className="text-sm text-muted-foreground">Productos</p>
                 </div>
               </div>
             </CardContent>
@@ -195,7 +190,7 @@ export default function Inventory() {
                 <AlertTriangle className="h-5 w-5 text-destructive" />
                 <div>
                   <p className="text-2xl font-bold">{getLowStockCount()}</p>
-                  <p className="text-sm text-muted-foreground">Stock Bajo</p>
+                  <p className="text-sm text-muted-foreground">Stock bajo</p>
                 </div>
               </div>
             </CardContent>
@@ -207,19 +202,7 @@ export default function Inventory() {
                 <Package className="h-5 w-5 text-red-500" />
                 <div>
                   <p className="text-2xl font-bold">{getOutOfStockCount()}</p>
-                  <p className="text-sm text-muted-foreground">Sin Stock</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center gap-2">
-                <Warehouse className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <p className="text-2xl font-bold">{warehouses.length}</p>
-                  <p className="text-sm text-muted-foreground">Depósitos</p>
+                  <p className="text-sm text-muted-foreground">Sin stock</p>
                 </div>
               </div>
             </CardContent>
@@ -248,7 +231,6 @@ export default function Inventory() {
                   onChange={(e) => setSelectedWarehouseId(e.target.value)}
                   className="px-3 py-2 border border-input bg-background rounded-md text-foreground"
                 >
-                  <option value="all">Todos los depósitos</option>
                   {warehouses.map(warehouse => (
                     <option key={warehouse.id} value={warehouse.id}>{warehouse.name}</option>
                   ))}
@@ -261,9 +243,9 @@ export default function Inventory() {
                 >
                   <option value="all">Todos los niveles</option>
                   <option value="out">Sin stock</option>
-                  <option value="low">Stock bajo (≤15)</option>
-                  <option value="normal">Stock normal (16-50)</option>
-                  <option value="high">Stock alto (&gt;50)</option>
+                  <option value="low">Stock bajo</option>
+                  <option value="normal">Stock normal</option>
+                  <option value="high">Stock alto</option>
                 </select>
               </div>
             </div>
@@ -294,22 +276,25 @@ export default function Inventory() {
                             {item.name}
                           </h3>
                           <p className="text-muted-foreground text-sm">
-                            SKU: {item.sku} • {item.category_name}
+                            SKU: {item.sku}
                           </p>
                         </div>
                         
                         <div className="flex items-center gap-4">
-                          <Badge variant={stockInfo.color as any}>
-                            {stockInfo.status}
-                          </Badge>
                           <div className="text-right">
                             <p className={`text-3xl font-bold ${stockInfo.textColor}`}>
                               {item.stock}
                             </p>
-                            <p className="text-sm text-muted-foreground">
-                              unidades
-                            </p>
+                            <p className="text-sm text-muted-foreground">unidades</p>
                           </div>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleAdjustStock(item)}
+                          >
+                            Ajustar stock
+                          </Button>
                         </div>
                       </div>
 
@@ -317,7 +302,6 @@ export default function Inventory() {
                       <div className="space-y-2">
                         <div className="flex justify-between text-xs text-muted-foreground">
                           <span>Nivel de stock</span>
-                          <span>{item.stock} unidades</span>
                         </div>
                         <div className="w-full bg-slate-200 rounded-full h-2.5">
                           <div 
@@ -325,20 +309,6 @@ export default function Inventory() {
                             style={{ width: `${stockPercentage}%` }}
                           />
                         </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex justify-between items-center pt-2 border-t">
-                        <div className="text-sm text-muted-foreground">
-                          Precio unitario: <span className="font-semibold">${item.price.toFixed(2)}</span>
-                        </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => handleAdjustStock(item)}
-                        >
-                          Ajustar Stock
-                        </Button>
                       </div>
                     </div>
                   </CardContent>
@@ -357,7 +327,7 @@ export default function Inventory() {
                   No se encontraron productos
                 </h3>
                 <p className="text-muted-foreground">
-                  Intenta ajustar los criterios de búsqueda
+                  Intentá ajustar los criterios de búsqueda
                 </p>
               </div>
             </CardContent>
@@ -373,6 +343,7 @@ export default function Inventory() {
           productId={selectedProduct.id}
           productName={selectedProduct.name}
           currentStock={selectedProduct.stock}
+          warehouseId={selectedWarehouseId}
           onStockAdjusted={handleStockAdjusted}
         />
       )}
